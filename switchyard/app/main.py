@@ -58,7 +58,8 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 REPO = "xiao-si-qi/switchyard"
-RAW_CONFIG_URL = "https://raw.githubusercontent.com/%s/main/switchyard/config.yaml" % REPO
+# raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
+CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
 SELF_VERSION_CACHE = {"at": 0, "latest": "", "error": ""}
 
 
@@ -128,7 +129,10 @@ def latest_addon_version(max_age=600):
         return version, ""
 
     try:
-        req = urllib.request.Request(RAW_CONFIG_URL, headers={"User-Agent": "switchyard"})
+        req = urllib.request.Request(
+            CONFIG_URL,
+            headers={"User-Agent": "switchyard", "Accept": "application/vnd.github.raw"},
+        )
         with urllib.request.urlopen(req, timeout=10) as resp:
             text = resp.read().decode("utf-8", "replace")
         latest = ""
