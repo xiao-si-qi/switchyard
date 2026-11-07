@@ -104,6 +104,8 @@ def _base(device_id, state, cap, spec):
     return {
         "name": spec["name"],
         "unique_id": "switchyard_%s_%s" % (device_id, cap),
+        # 固定 entity_id：不随设备名/重命名变化，避免出现 pinyin 前缀和 _2 重复
+        "object_id": "switchyard_%s_%s" % (device_id, spec.get("obj", cap)),
         "device": _device_block(device_id, state),
         "origin": {"name": MANUFACTURER},
     }
