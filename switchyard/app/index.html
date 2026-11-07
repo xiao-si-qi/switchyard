@@ -357,8 +357,8 @@ function renderDevices() {
     el.className = "dev";
     el.innerHTML = "<div class='top'><span class='dot'></span><span class='id'></span><span class='type'></span></div><div class='meta'></div>";
     if (d.online) el.querySelector(".dot").classList.add("on");
-    el.querySelector(".id").textContent = d.id;
-    el.querySelector(".type").textContent = d.type;
+    el.querySelector(".id").textContent = d.name || d.id;
+    el.querySelector(".type").textContent = (d.name && d.name !== d.id) ? d.id : d.type;
     const bits = [];
     if (d.fw) bits.push("固件 " + d.fw);
     if (d.rssi !== null && d.rssi !== undefined) bits.push(d.rssi + " dBm");
@@ -378,7 +378,8 @@ function renderDetail() {
     $("d-forget").textContent = "删除设备";
   }
   const d = devices.find((x) => x.id === currentDevice);
-  $("d-title").textContent = currentDevice || "(未知设备)";
+  const cur = devices.find((x) => x.id === currentDevice);
+  $("d-title").textContent = (cur && cur.name) ? cur.name : (currentDevice || "(未知设备)");
   const st = $("d-status");
   if (!d) {
     st.textContent = "没有这台设备的状态";
@@ -392,6 +393,7 @@ function renderDetail() {
   const rows = [
     ["设备 id", d.id],
     ["类型", d.type],
+    ["设备 ID", d.id],
     ["固件", d.fw || "-"],
     ["IP", d.ip || "-"],
     ["信号", d.rssi !== null && d.rssi !== undefined ? d.rssi + " dBm" : "-"],

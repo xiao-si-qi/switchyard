@@ -355,6 +355,7 @@ class DeviceStore:
                         "online": online,
                         "availability": dev["availability"],
                         "type": dev_type,
+                        "name": meta.get("name") or state.get("name") or dev["id"],
                         "caps": self._caps(dev),
                         "fw": state.get("fw"),
                         "rssi": state.get("rssi"),
@@ -402,6 +403,7 @@ class DeviceStore:
                 "online": dev["availability"] == "online" and fresh,
                 "availability": dev["availability"],
                 "type": meta.get("type") or state.get("type", "unknown"),
+                "name": meta.get("name") or state.get("name") or dev["id"],
                 "caps": self._caps(dev),
                 "fw": state.get("fw"),
                 "meta": meta,          # 中文名/型号在 meta 里，调用方要靠它
