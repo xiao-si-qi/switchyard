@@ -253,9 +253,9 @@ function populateDeviceSelect() {
 
 async function checkSelfUpdate() {
   const el = $("self-version");
-  el.textContent = "检查中…";
+  el.textContent = "检查中…（Supervisor + GitHub）";
   try {
-    const resp = await fetch("api/self_update");
+    const resp = await fetch("api/self_update?force=1");
     const data = await resp.json();
     if (!data.ok) {
       el.textContent = "v" + data.current + " · 检查失败";
@@ -269,7 +269,7 @@ async function checkSelfUpdate() {
     } else {
       el.textContent = "v" + data.current + " · 已是最新";
       el.className = "status ok";
-      el.title = "最新: v" + data.latest;
+      el.title = "最新: v" + data.latest + " (" + (data.latest_source || "?") + ")";
     }
   } catch (e) {
     el.textContent = "检查失败";

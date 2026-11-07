@@ -67,7 +67,7 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 # 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
-FALLBACK_VERSION = "0.7.5"
+FALLBACK_VERSION = "0.7.6"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
@@ -160,35 +160,53 @@ def reload_store():
         return False, str(exc)
 
 
-def latest_addon_version(max_age=600):
-    """从 GitHub 读最新版本（缓存 10 分钟）。"""
+def github_latest_version():
+    """直接问 GitHub 上的 config.yaml（API，不走 CDN 缓存）。"""
+    req = urllib.request.Request(
+        CONFIG_URL,
+        headers={"User-Agent": "switchyard", "Accept": "application/vnd.github.raw"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        text = resp.read().decode("utf-8", "replace")
+    for line in text.splitlines():
+        if line.startswith("version:"):
+            return line.split(":", 1)[1].strip().strip('"').strip("'")
+    raise RuntimeError("version not found in remote config.yaml")
+
+
+def latest_addon_version(max_age=60, force=False):
+    """最新可用版本：Supervisor 商店 + GitHub 两路都查，取较大的那个。
+
+    - force=True（用户点「检查更新」）忽略缓存，两路都重新请求；
+    - 只取 Supervisor 会读到商店的旧缓存，所以必须和 GitHub 取最大值。
+    """
     now = time.time()
-    if SELF_VERSION_CACHE["latest"] and now - SELF_VERSION_CACHE["at"] < max_age:
+    if not force and SELF_VERSION_CACHE["latest"] and now - SELF_VERSION_CACHE["at"] < max_age:
         return SELF_VERSION_CACHE["latest"], SELF_VERSION_CACHE["error"]
+
+    candidates = []
+    errors = []
+
     version, serr = supervisor_store_version()
     if version:
-        SELF_VERSION_CACHE.update({"at": now, "latest": version, "error": ""})
-        return version, ""
+        candidates.append(("supervisor", version))
+    else:
+        errors.append("supervisor: %s" % serr)
 
     try:
-        req = urllib.request.Request(
-            CONFIG_URL,
-            headers={"User-Agent": "switchyard", "Accept": "application/vnd.github.raw"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            text = resp.read().decode("utf-8", "replace")
-        latest = ""
-        for line in text.splitlines():
-            if line.startswith("version:"):
-                latest = line.split(":", 1)[1].strip().strip('"').strip("'")
-                break
-        if not latest:
-            raise RuntimeError("version not found in remote config.yaml")
-        SELF_VERSION_CACHE.update({"at": now, "latest": latest, "error": ""})
-        return latest, ""
+        candidates.append(("github", github_latest_version()))
     except Exception as exc:  # noqa: BLE001
-        SELF_VERSION_CACHE.update({"at": now, "latest": "", "error": "%s; github: %s" % (serr, exc)})
-        return "", "%s; github: %s" % (serr, exc)
+        errors.append("github: %s" % exc)
+
+    if not candidates:
+        msg = " | ".join(errors)
+        SELF_VERSION_CACHE.update({"at": now, "latest": "", "error": msg})
+        return "", msg
+
+    source, latest = max(candidates, key=lambda item: version_tuple(item[1]))
+    err = "" if len(candidates) == 2 else " | ".join(errors)
+    SELF_VERSION_CACHE.update({"at": now, "latest": latest, "source": source, "error": err})
+    return latest, err
 
 
 DEFAULT_LAYOUT = {
@@ -332,14 +350,17 @@ class Handler(BaseHTTPRequestHandler):
                 }
             )
         elif path.endswith("/api/self_update"):
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            force = (query.get("force") or ["0"])[0] not in ("0", "", "false")
             current = addon_version()
-            latest, err = latest_addon_version()
+            latest, err = latest_addon_version(force=force)
             self.send_json(
                 {
                     "ok": bool(latest),
                     "current": current,
                     "current_source": VERSION_SOURCE["source"],
                     "latest": latest,
+                    "latest_source": SELF_VERSION_CACHE.get("source", ""),
                     "update_available": bool(latest) and version_tuple(latest) > version_tuple(current),
                     "error": err,
                     "repo": REPO,
