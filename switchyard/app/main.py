@@ -67,7 +67,7 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 # 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
-FALLBACK_VERSION = "0.10.9"
+FALLBACK_VERSION = "0.11.0"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
@@ -545,6 +545,104 @@ def api_device_log(device_id):
             return jsonify({"ok": True, "device": device_id, "log": text})
         time.sleep(0.1)
     return jsonify({"ok": False, "error": "设备没有回传日志（可能不在线或不支持 log 能力）"}), 504
+
+
+# ---------------------------------------------------------------------------
+# 背景图：上传 → 裁成 360×360 JPEG → 设备自己下载解码
+# ---------------------------------------------------------------------------
+BG_MAX_SLOTS = 8
+BG_SIZE = 360
+
+
+def bg_dir(device_id):
+    return os.path.join(WWW_DIR, device_id, "bg")
+
+
+def bg_url(device_id, slot):
+    public = (OPTS.get("public_url") or os.environ.get("PUBLIC_URL") or "").rstrip("/")
+    if not public:
+        return ""
+    return "%s%s/%s/bg/%d.jpg" % (public, local_prefix(), device_id, slot)
+
+
+@app.get("/api/devices/<device_id>/background")
+def api_device_background_list(device_id):
+    err = bad_id(device_id)
+    if err:
+        return err
+    folder = bg_dir(device_id)
+    slots = []
+    if os.path.isdir(folder):
+        for name in sorted(os.listdir(folder)):
+            if name.endswith(".jpg"):
+                try:
+                    slot = int(name[:-4])
+                except ValueError:
+                    continue
+                path = os.path.join(folder, name)
+                slots.append({"slot": slot, "url": bg_url(device_id, slot),
+                              "bytes": os.path.getsize(path)})
+    return jsonify({"ok": True, "device": device_id, "images": slots, "max": BG_MAX_SLOTS})
+
+
+@app.post("/api/devices/<device_id>/background")
+def api_device_background_upload(device_id):
+    err = bad_id(device_id)
+    if err:
+        return err
+    if not bg_url(device_id, 1):
+        return jsonify({"ok": False, "error": "加载项需要配置 public_url（设备用它下载图片）"}), 400
+
+    try:
+        slot = int(request.args.get("slot") or "0")
+    except ValueError:
+        slot = 0
+    if slot < 1 or slot > BG_MAX_SLOTS:
+        return jsonify({"ok": False, "error": "slot 必须是 1..%d" % BG_MAX_SLOTS}), 400
+
+    mode = (request.args.get("mode") or "cover").lower()
+    raw = request.get_data(cache=False)
+    if not raw:
+        return jsonify({"ok": False, "error": "empty body"}), 400
+    if len(raw) > 12 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "图片太大（上限 12 MB）"}), 413
+
+    try:
+        from PIL import Image, ImageOps
+        import io as _io
+
+        img = Image.open(_io.BytesIO(raw))
+        img = ImageOps.exif_transpose(img).convert("RGB")
+
+        if mode == "contain":
+            img.thumbnail((BG_SIZE, BG_SIZE), Image.LANCZOS)
+            canvas = Image.new("RGB", (BG_SIZE, BG_SIZE), (0, 0, 0))
+            canvas.paste(img, ((BG_SIZE - img.width) // 2, (BG_SIZE - img.height) // 2))
+            img = canvas
+        else:  # cover
+            img = ImageOps.fit(img, (BG_SIZE, BG_SIZE), Image.LANCZOS, centering=(0.5, 0.5))
+
+        folder = bg_dir(device_id)
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, "%d.jpg" % slot)
+        img.save(path, "JPEG", quality=88, optimize=True)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": "图片处理失败: %s" % exc}), 400
+
+    print("background %s slot %d saved (%d bytes)" % (device_id, slot, os.path.getsize(path)), flush=True)
+    return jsonify({"ok": True, "device": device_id, "slot": slot,
+                    "url": bg_url(device_id, slot), "bytes": os.path.getsize(path)})
+
+
+@app.delete("/api/devices/<device_id>/background/<int:slot>")
+def api_device_background_delete(device_id, slot):
+    err = bad_id(device_id)
+    if err:
+        return err
+    path = os.path.join(bg_dir(device_id), "%d.jpg" % slot)
+    if os.path.exists(path):
+        os.remove(path)
+    return jsonify({"ok": True, "device": device_id, "slot": slot})
 
 
 @app.get("/api/self_update")

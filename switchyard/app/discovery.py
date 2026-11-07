@@ -33,7 +33,8 @@ MANUFACTURER = "Switchyard"
 
 # 每类设备的默认能力（设备没上报 meta 时使用）
 DEFAULT_CAPS = {
-    "screen": ["fw", "rssi", "uptime", "layout", "ota", "reboot", "brightness", "log", "online"],
+    "screen": ["fw", "rssi", "uptime", "layout", "background", "ota", "reboot",
+               "brightness", "log", "online"],
     "meter": ["fw", "rssi", "uptime", "battery", "battery_v", "water", "climate",
               "leak", "comm_fault", "online", "valve", "ota", "reboot", "log"],
     "elink": ["fw", "rssi", "uptime", "battery", "battery_v", "climate",
@@ -85,6 +86,9 @@ SPECS = {
                    "command_template": '{"cmd":"set","key":"brightness","value":{{ value }}}'},
     "online": {"kind": "binary_sensor", "name": "在线", "device_class": "connectivity",
                "availability": True},
+    # 这些能力不生成实体，只决定设备页显示哪些配置面板
+    "background": {"kind": "none"},
+
     "log": {"kind": "sensor", "name": "最近错误", "icon": "mdi:alert-circle-outline",
             "diag": True, "diagnostic": True},
 }
@@ -128,6 +132,8 @@ def _configs(device_id, state, caps):
         if spec is None:
             continue          # 未知能力：忽略（设备可以比插件新）
         kind = spec["kind"]
+        if kind == "none":
+            continue          # 纯 UI 能力（例如背景图配置）
         cfg = _base(device_id, state, cap, spec)
         cfg["icon"] = spec.get("icon", cfg.get("icon", ""))
         if spec.get("diagnostic"):
