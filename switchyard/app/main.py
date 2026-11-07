@@ -187,6 +187,17 @@ class Handler(BaseHTTPRequestHandler):
                     "public_url": (OPTS.get("public_url") or os.environ.get("PUBLIC_URL") or "").rstrip("/"),
                 }
             )
+        elif "/api/devices/" in path and path.endswith("/layout"):
+            device_id = path.split("/api/devices/", 1)[1].rsplit("/layout", 1)[0]
+            lp = os.path.join(LAYOUTS_DIR, device_id + ".json")
+            layout = None
+            if os.path.exists(lp):
+                try:
+                    with open(lp, "r", encoding="utf-8") as fh:
+                        layout = json.load(fh)
+                except Exception:  # noqa: BLE001
+                    layout = None
+            self.send_json({"ok": True, "device": device_id, "layout": layout, "path": lp})
         elif path.endswith("/api/devices"):
             self.send_json(
                 {
@@ -231,6 +242,9 @@ class Handler(BaseHTTPRequestHandler):
     # --- POST ------------------------------------------------------------
     def do_POST(self):
         path = self.route()
+        if "/api/devices/" in path and path.endswith("/layout"):
+            self.handle_device_layout(path)
+            return
         if "/api/devices/" in path and path.endswith("/forget"):
             device_id = path.split("/api/devices/", 1)[1].rsplit("/forget", 1)[0]
             STORE.forget(device_id)
@@ -265,6 +279,38 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": False, "error": str(exc)}, 500)
             return
         self.send_json({"ok": True, "version": data["version"], "layout_path": LAYOUT_PATH})
+
+    def handle_device_layout(self, path):
+        device_id = path.split("/api/devices/", 1)[1].rsplit("/layout", 1)[0]
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b"{}"
+            data = json.loads(raw.decode("utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            self.send_json({"ok": False, "error": "invalid JSON: %s" % exc}, 400)
+            return
+        err = validate_layout(data)
+        if err:
+            self.send_json({"ok": False, "error": err}, 400)
+            return
+
+        os.makedirs(LAYOUTS_DIR, exist_ok=True)
+        lp = os.path.join(LAYOUTS_DIR, device_id + ".json")
+        try:
+            with open(lp, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, ensure_ascii=False, indent=2)
+        except Exception as exc:  # noqa: BLE001
+            self.send_json({"ok": False, "error": str(exc)}, 500)
+            return
+
+        if MQTT is None or not MQTT.connected:
+            self.send_json({"ok": False, "error": "MQTT not connected (layout saved locally)", "saved": True}, 503)
+            return
+
+        payload = json.dumps(data, ensure_ascii=False)
+        topic = "orbis/%s/cfg" % device_id
+        ok = MQTT.publish(topic, payload, retain=True)
+        self.send_json({"ok": ok, "topic": topic, "bytes": len(payload)}, 200 if ok else 500)
 
     def handle_device_cmd(self, path):
         # /api/devices/<id>/cmd
@@ -329,6 +375,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 DATA_DIR = os.environ.get("DATA_DIR") or ("/data" if os.path.isdir("/data") else os.path.join(APP_DIR, "..", "data"))
+LAYOUTS_DIR = os.path.join(DATA_DIR, "layouts")
 STORE = mqtt_bridge.DeviceStore(
     path=os.path.join(DATA_DIR, "devices.json"),
     stale_after=int(OPTS.get("device_stale_seconds") or os.environ.get("STALE_SECONDS") or 300),

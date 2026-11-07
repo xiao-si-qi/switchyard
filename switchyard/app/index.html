@@ -97,6 +97,7 @@
     <div class="panel">
       <strong style="font-size:14px">操作</strong>
       <div class="actions">
+        <button id="d-layout">编辑本设备布局</button>
         <button id="d-reboot">重启设备</button>
         <button id="d-ota" class="primary">下发 OTA</button>
         <span class="status" id="d-action-status"></span>
@@ -120,6 +121,13 @@
 
   <section id="view-settings" class="hidden">
     <div class="panel">
+      <div class="row" style="margin-bottom:12px">
+        <span class="status">布局目标</span>
+        <select id="cfg-device" style="padding:8px;border-radius:8px;background:#0f1115;color:#e8e8ea;border:1px solid #2b303b">
+          <option value="">（选择设备）</option>
+        </select>
+        <span class="status" id="cfg-device-hint"></span>
+      </div>
       <div class="tabs" id="tabs"></div>
       <div class="tiles" id="tiles"></div>
       <p class="hint">
@@ -166,6 +174,7 @@ let layout = { title: "Home", pages: [{ name: "Devices", tiles: [] }] };
 let page = 0;
 let devices = [];
 let currentDevice = null;
+let cfgDevice = "";
 let pollTimer = null;
 
 function route() {
@@ -181,6 +190,7 @@ function route() {
     loadDevices(true);
   } else if (hash === "#/settings") {
     $("view-settings").classList.remove("hidden");
+    populateDeviceSelect();
     loadLayout();
     loadFirmware();
     searchEntities();
@@ -210,6 +220,21 @@ function fmtAge(ts) {
   if (s < 3600) return Math.floor(s / 60) + " 分钟前";
   if (s < 86400) return Math.floor(s / 3600) + " 小时前";
   return Math.floor(s / 86400) + " 天前";
+}
+
+function populateDeviceSelect() {
+  const sel = $("cfg-device");
+  if (!sel) return;
+  const ids = devices.map((d) => d.id);
+  sel.innerHTML = "<option value=''>(选择设备)</option>" +
+    ids.map((id) => "<option value='" + id + "'>" + id + "</option>").join("");
+  if (cfgDevice && ids.indexOf(cfgDevice) < 0) {
+    sel.innerHTML += "<option value='" + cfgDevice + "'>" + cfgDevice + "（未上报）</option>";
+  }
+  sel.value = cfgDevice;
+  $("cfg-device-hint").textContent = cfgDevice
+    ? "保存后 retained 发布到 orbis/" + cfgDevice + "/cfg（设备立即生效）"
+    : "布局直接下发到设备，不再写 /config/www 里的文件";
 }
 
 async function loadDevices(forDetail) {
@@ -315,6 +340,17 @@ async function sendCmd(payload) {
   }
 }
 
+$("cfg-device") && ($("cfg-device").onchange = () => {
+  cfgDevice = $("cfg-device").value;
+  populateDeviceSelect();
+  loadLayout();
+});
+
+$("d-layout").onclick = () => {
+  cfgDevice = currentDevice || "";
+  location.hash = "#/settings";
+};
+
 $("btn-back").onclick = () => { location.hash = "#/"; };
 $("d-reboot").onclick = () => sendCmd({ cmd: "reboot" });
 $("d-set-bright").onclick = () => sendCmd({ cmd: "set", key: "brightness", value: Number($("d-bright").value) });
@@ -350,14 +386,22 @@ function typeOf(entity) {
 
 async function loadLayout() {
   setLayoutStatus("读取中…");
-  const resp = await fetch("api/layout");
+  if (!cfgDevice) {
+    layout = { title: "Home", pages: [{ name: "Devices", tiles: [] }] };
+    page = 0;
+    renderLayout();
+    setLayoutStatus("先在上方选择一台设备", "err");
+    return;
+  }
+  const url = "api/devices/" + encodeURIComponent(cfgDevice) + "/layout";
+  const resp = await fetch(url);
   const data = await resp.json();
   if (!data.ok) { setLayoutStatus("读取失败: " + data.error, "err"); return; }
-  layout = data.layout || layout;
+  layout = data.layout || { title: "Home", pages: [{ name: "Devices", tiles: [] }] };
   if (!layout.pages || !layout.pages.length) layout.pages = [{ name: "Devices", tiles: [] }];
   page = 0;
   renderLayout();
-  setLayoutStatus("已读取", "ok");
+  setLayoutStatus(cfgDevice ? "已读取 " + cfgDevice + " 的布局" : "已读取全局布局", "ok");
 }
 
 function renderLayout() {
@@ -448,15 +492,20 @@ async function searchEntities() {
 }
 
 $("btn-save-layout").onclick = async () => {
-  setLayoutStatus("发布中…");
-  const resp = await fetch("api/layout", {
+  if (!cfgDevice) { setLayoutStatus("先选择一台设备", "err"); return; }
+  const url = "api/devices/" + encodeURIComponent(cfgDevice) + "/layout";
+  setLayoutStatus("下发中…");
+  const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(layout),
   });
   const data = await resp.json();
-  if (data.ok) setLayoutStatus("已发布 v" + data.version, "ok");
-  else setLayoutStatus("发布失败: " + data.error, "err");
+  if (data.ok) {
+    setLayoutStatus(cfgDevice ? "已下发到 " + cfgDevice + "（retained）" : "已发布 v" + data.version, "ok");
+  } else {
+    setLayoutStatus("发布失败: " + data.error, "err");
+  }
 };
 $("btn-json").onclick = () => {
   const box = $("json-box");

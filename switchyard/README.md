@@ -39,6 +39,15 @@ HA 的 Mosquitto 加载项用 Home Assistant 的账号做认证（不是 anonymo
 2. 打开 Switchyard 加载项 → **配置** → 填入 `mqtt_username` / `mqtt_password` → 保存 → 重启加载项；
 3. 面板顶部应显示 **「MQTT 已连接 · N 台设备」**。
 
+### 按设备下发布局（MQTT，0.4.0）
+
+「布局 / 固件」页顶部先选 **布局目标（设备）**，保存时：
+
+- **retained 发布到 `orbis/<id>/cfg`**，设备收到**立即应用**并存 NVS（重启后先用它）；
+- 配置**不再写进 `www` 静态目录**，也就不出公网；
+- 支持 N 块同款屏各用各的布局（设备 id 由固件自动生成 `orbis-xxxx`）；
+- 设备详情页的「编辑本设备布局」会自动把目标切到那台设备。
+
 ### 设备自动注册（不用手工添加）
 
 - 设备第一次往 `orbis/<id>/state`、`orbis/<id>/availability` 或 `orbis/<id>/event` 发消息，

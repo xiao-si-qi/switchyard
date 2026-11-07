@@ -18,6 +18,7 @@
 | `orbis/<id>/availability` | 设备 → HA | ✅ | `online` / `offline`，用 LWT 维护 |
 | `orbis/<id>/event` | 设备 → HA | ❌ | JSON 事件，见 §4 |
 | `orbis/<id>/cmd` | Switchyard → 设备 | ✅ | JSON 命令，见 §5 |
+| `orbis/<id>/cfg` | Switchyard → 设备 | ✅ | **配置下发（布局 JSON）**，见 §5.1 |
 | `orbis/<id>/ack` | 设备 → HA | ❌ | `{"seq":N,"ok":true,"err":"..."}` |
 | `orbis/<id>/meta` | 设备 → HA | ✅ | 静态能力声明，见 §6（可选） |
 
@@ -72,6 +73,23 @@
 - 命令以 **retained** 方式发布，设备上线/唤醒后订阅到最新一条；
 - 设备本地保存"已执行的最后 seq"，**只执行 seq 更大的命令**，执行完发 `ack`，再清掉 retained（`retain=true, payload=""`）；
 - 这样"发命令时设备在睡觉"也不会丢：醒来第一件事就是拉到它。
+
+### 5.1 cfg：配置直接下发（推荐）
+
+布局这类"结构性配置"不走 cmd，而是单独一条 retained 主题：
+
+```
+orbis/<id>/cfg      payload = 布局 JSON（和 /local/orbis/layout.json 同一格式）
+```
+
+- Switchyard 保存布局时 **retained 发布**到该设备专属的 `cfg` 主题；
+- 设备收到 → 解析 → 应用界面 → **存 NVS**（重启后先用 NVS 里的这份）；
+- 设备回 `event: {"ev":"cfg_applied"}`；
+- 新设备第一次上线会立刻收到 broker 上保留的最后一份，不需要等到下次下发；
+- 好处：**按设备寻址**（同款屏可以有 N 个不同布局）、**主动推送**、**配置不出公网**
+  （不再需要把 JSON 放到 `www` 静态目录）。
+
+设备的优先级：`NVS 里的 cfg` → `HTTP /local/orbis/layout.json` → 自动发现兜底。
 
 ## 6. meta（能力声明，可选）
 
