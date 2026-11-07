@@ -79,6 +79,16 @@ HA 的 Mosquitto 加载项用 Home Assistant 的账号做认证（不是 anonymo
 
 旁边就是「下发 OTA」，两步就能完成升级。
 
+### 不同设备类型的实体（0.9.0）
+
+除通用实体外，`state` 里出现对应字段就生成对应实体（所以同一套协议能覆盖圆屏、水表、墨水屏）：
+
+| state 字段 | 实体 |
+|---|---|
+| `water` / `temp` / `hum` / `battery_v` | `sensor`（m³ / °C / % / V）|
+| `leak` / `comm_fault` | `binary_sensor`（moisture / problem）|
+| `valve` + caps 含 `valve` | `switch.阀门`（payload `{"cmd":"valve","open":true}`）|
+
 ### 设备能力声明（caps，0.7.0）
 
 设备上线时发一次 retained 的 `switchyard/<id>/meta`，告诉插件它会什么：

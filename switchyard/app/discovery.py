@@ -96,6 +96,54 @@ def _configs(device_id, state, caps):
     })
     add("binary_sensor", "online", cfg)
 
+    # ---- 水表/环境类：state 里有的字段才生成实体 ----
+    meter_keys = [
+        ("water", "累计水量", "m³", "water", "total_increasing", "mdi:water"),
+        ("temp", "温度", "°C", "temperature", "measurement", "mdi:thermometer"),
+        ("hum", "湿度", "%", "humidity", "measurement", "mdi:water-percent"),
+        ("battery_v", "电池电压", "V", "voltage", "measurement", "mdi:battery-outline"),
+    ]
+    for key, name, unit, device_class, state_class, icon in meter_keys:
+        cfg = _common(device_id, state, name, key)
+        cfg.update({
+            "state_topic": state_topic,
+            "value_template": "{{ value_json.%s }}" % key,
+            "unit_of_measurement": unit,
+            "device_class": device_class,
+            "state_class": state_class,
+            "icon": icon,
+        })
+        add("sensor", key, cfg)
+
+    for key, name, device_class, icon in (
+        ("leak", "漏水", "moisture", "mdi:water-alert"),
+        ("comm_fault", "通信故障", "problem", "mdi:connection"),
+    ):
+        cfg = _common(device_id, state, name, key)
+        cfg.update({
+            "state_topic": state_topic,
+            "value_template": "{{ 'ON' if value_json.%s else 'OFF' }}" % key,
+            "payload_on": "ON",
+            "payload_off": "OFF",
+            "device_class": device_class,
+            "icon": icon,
+        })
+        add("binary_sensor", key, cfg)
+
+    if "valve" in caps:
+        cfg = _common(device_id, state, "阀门", "valve")
+        cfg.update({
+            "state_topic": state_topic,
+            "value_template": "{{ 'ON' if value_json.valve else 'OFF' }}",
+            "command_topic": cmd_topic,
+            "payload_on": json.dumps({"cmd": "valve", "open": True}),
+            "payload_off": json.dumps({"cmd": "valve", "open": False}),
+            "state_on": "ON",
+            "state_off": "OFF",
+            "icon": "mdi:valve",
+        })
+        add("switch", "valve", cfg)
+
     if "reboot" in caps:
         cfg = _common(device_id, state, "重启", "reboot")
         cfg.update({
@@ -151,7 +199,7 @@ def remove_device(mqtt, device_id, caps=None):
         return 0
     removed = 0
     # 用最大集合清（设备可能刚改过 caps，宁可多发几条空的）
-    for component, obj, _cfg in _configs(device_id, {}, ["reboot", "ota", "brightness"]):
+    for component, obj, _cfg in _configs(device_id, {}, ["reboot", "ota", "brightness", "valve"]):
         topic = "%s/%s/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, component, device_id, obj)
         if mqtt.publish(topic, "", retain=True):
             removed += 1
