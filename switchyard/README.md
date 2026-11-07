@@ -23,7 +23,7 @@ https://github.com/xiao-si-qi/switchyard
 
 | 选项 | 默认 | 说明 |
 |---|---|---|
-| `www_dir` | `/config/www/orbis` | 发布目录；与 Orbis Panel 固件默认路径一致 |
+| `www_dir` | `/config/www/switchyard` | 发布根目录；每台设备一个子目录 `<www_dir>/<device_id>/firmware.bin` |
 | `public_url` | 空 | 设备的下载前缀，例如 `https://ha.xiaosiqi.cn`；「下发 OTA」用它拼固件 URL |
 | `device_stale_seconds` | `300` | 超过这么久没有新上报就显示离线（电池设备可以调大）|
 | `mqtt_host` | `core-mosquitto` | HA 官方 Mosquitto 加载项的域名 |

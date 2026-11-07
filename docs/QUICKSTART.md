@@ -51,8 +51,20 @@ POST /api/devices/<id>/layout
 
 ## 5. 远程 OTA
 
-switchyard「布局 / 固件」页上传 `orbis.bin`（版本号要等于固件里的 `PROJECT_VER`）→
-设备页「下发 OTA」→ 设备从 `public_url` 拼出的地址下载 → 写非活动槽 → 重启。
+在**设备详情页**上传 `orbis.bin`（版本号要等于固件里的 `PROJECT_VER`），文件落在：
+
+```
+/config/www/switchyard/<device_id>/firmware.bin
+/config/www/switchyard/<device_id>/firmware.json
+```
+
+点「下发 OTA」后，设备收到 `cmd:ota` 里的完整 URL：
+
+```
+<public_url>/local/switchyard/<device_id>/firmware.bin
+```
+
+然后写非活动槽 → 重启。
 
 > `public_url` 要在加载项配置里填，例如 `https://ha.xiaosiqi.cn`；
 > 填错设备会下载失败，日志里能看到 `ota begin failed`。

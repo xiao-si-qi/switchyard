@@ -32,15 +32,26 @@ def load_options():
 
 
 OPTS = load_options()
-WWW_DIR = OPTS.get("www_dir") or os.environ.get("WWW_DIR") or "/config/www/orbis"
+WWW_DIR = OPTS.get("www_dir") or os.environ.get("WWW_DIR") or "/config/www/switchyard"
+
+
+def local_prefix():
+    """把 /config/www/switchyard 映射成 /local/switchyard（HA 的 www 静态目录）。"""
+    base = "/config/www"
+    rel = os.path.relpath(WWW_DIR, base) if WWW_DIR.startswith(base) else os.path.basename(WWW_DIR)
+    return "/local/" + rel.replace(os.sep, "/")
 LAYOUT_PATH = os.environ.get("LAYOUT_PATH", os.path.join(WWW_DIR, "layout.json"))
 CORE_API = "http://supervisor/core/api"
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 PORT = int(os.environ.get("PORT", "8099"))
 
-FW_PATH = os.path.join(WWW_DIR, "firmware.bin")
-FW_META = os.path.join(WWW_DIR, "firmware.json")
 MAX_FW = 4 * 1024 * 1024  # app 分区 4MB
+
+
+def fw_paths(device_id):
+    """每个设备一个子目录：/config/www/switchyard/<device_id>/{firmware.bin,firmware.json}"""
+    folder = os.path.join(WWW_DIR, device_id)
+    return folder, os.path.join(folder, "firmware.bin"), os.path.join(folder, "firmware.json")
 
 DEFAULT_LAYOUT = {
     "version": 1,
@@ -72,20 +83,22 @@ def write_layout(data):
     os.replace(tmp, LAYOUT_PATH)
 
 
-def read_fw_meta():
-    if os.path.exists(FW_META):
+def read_fw_meta(device_id):
+    _, _, meta_path = fw_paths(device_id)
+    if os.path.exists(meta_path):
         try:
-            with open(FW_META, "r", encoding="utf-8") as fh:
+            with open(meta_path, "r", encoding="utf-8") as fh:
                 return json.load(fh)
         except Exception:  # noqa: BLE001
             pass
     return None
 
 
-def write_firmware(data, version):
+def write_firmware(device_id, data, version):
     """保存固件并生成 firmware.json（设备端按 version 判断是否需要升级）。"""
-    os.makedirs(WWW_DIR, exist_ok=True)
-    with open(FW_PATH, "wb") as fh:
+    folder, bin_path, meta_path = fw_paths(device_id)
+    os.makedirs(folder, exist_ok=True)
+    with open(bin_path, "wb") as fh:
         fh.write(data)
     meta = {
         "version": version,
@@ -94,7 +107,7 @@ def write_firmware(data, version):
         "sha256": hashlib.sha256(data).hexdigest(),
         "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }
-    with open(FW_META, "w", encoding="utf-8") as fh:
+    with open(meta_path, "w", encoding="utf-8") as fh:
         json.dump(meta, fh, ensure_ascii=False, indent=2)
     return meta
 
@@ -176,15 +189,19 @@ class Handler(BaseHTTPRequestHandler):
                     "devices": STORE.device_count(),
                 }
             )
-        elif path.endswith("/api/firmware"):
-            meta = read_fw_meta()
+        elif "/api/devices/" in path and path.endswith("/firmware"):
+            device_id = path.split("/api/devices/", 1)[1].rsplit("/firmware", 1)[0]
+            _, bin_path, _ = fw_paths(device_id)
+            public = (OPTS.get("public_url") or os.environ.get("PUBLIC_URL") or "").rstrip("/")
             self.send_json(
                 {
                     "ok": True,
-                    "firmware": meta,
-                    "present": os.path.exists(FW_PATH),
+                    "device": device_id,
+                    "firmware": read_fw_meta(device_id),
+                    "present": os.path.exists(bin_path),
                     "max_size": MAX_FW,
-                    "public_url": (OPTS.get("public_url") or os.environ.get("PUBLIC_URL") or "").rstrip("/"),
+                    "public_url": public,
+                    "firmware_url": (public + local_prefix() + "/" + device_id + "/firmware.bin") if public else "",
                 }
             )
         elif "/api/devices/" in path and path.endswith("/layout"):
@@ -253,8 +270,8 @@ class Handler(BaseHTTPRequestHandler):
         if "/api/devices/" in path and path.endswith("/cmd"):
             self.handle_device_cmd(path)
             return
-        if path.endswith("/api/firmware"):
-            self.handle_firmware_upload()
+        if "/api/devices/" in path and path.endswith("/firmware"):
+            self.handle_firmware_upload(path)
             return
         if not path.endswith("/api/layout"):
             self.send_json({"ok": False, "error": "not found"}, 404)
@@ -337,7 +354,8 @@ class Handler(BaseHTTPRequestHandler):
         ok = MQTT.publish(topic, json.dumps(cmd, ensure_ascii=False), retain=True)
         self.send_json({"ok": ok, "seq": cmd["seq"], "topic": topic}, 200 if ok else 500)
 
-    def handle_firmware_upload(self):
+    def handle_firmware_upload(self, path):
+        device_id = path.split("/api/devices/", 1)[1].rsplit("/firmware", 1)[0]
         params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         version = (params.get("version") or [""])[0].strip()
         try:
@@ -362,11 +380,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": False, "error": "version is required (e.g. 0.1.1)"}, 400)
             return
         try:
-            meta = write_firmware(data, version)
+            meta = write_firmware(device_id, data, version)
         except Exception as exc:  # noqa: BLE001
             self.send_json({"ok": False, "error": str(exc)}, 500)
             return
-        print("firmware %s saved (%d bytes, sha256 %s...)" % (version, len(data), meta["sha256"][:12]), flush=True)
+        print("firmware %s/%s saved (%d bytes)" % (device_id, version, len(data)), flush=True)
         self.send_json({"ok": True, "firmware": meta})
 
     # keep logs short; the Supervisor captures stdout/stderr

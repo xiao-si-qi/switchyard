@@ -114,6 +114,22 @@
     </div>
 
     <div class="panel">
+      <div class="row">
+        <strong style="font-size:14px">本设备固件</strong>
+        <span class="status" id="d-fw-info">读取中…</span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <input type="file" id="d-fw-file" accept=".bin" style="font-size:12px">
+        <input type="text" id="d-fw-version" placeholder="版本号，如 0.2.0" style="width:150px">
+        <button class="primary" id="d-fw-upload">上传到本设备</button>
+      </div>
+      <p class="hint">
+        文件存到 <code>/config/www/switchyard/&lt;设备&gt;/firmware.bin</code>，
+        设备用 <code>&lt;public_url&gt;/local/switchyard/&lt;设备&gt;/firmware.bin</code> 下载。
+      </p>
+    </div>
+
+    <div class="panel">
       <strong style="font-size:14px">原始 state</strong>
       <pre id="d-raw" style="font-size:12px;color:#8b93a1;white-space:pre-wrap;word-break:break-all;margin:8px 0 0"></pre>
     </div>
@@ -148,19 +164,6 @@
     </div>
 
     <div class="panel">
-      <div class="row">
-        <strong style="font-size:14px">固件 OTA</strong>
-        <span class="status" id="fw-info">读取中…</span>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <input type="file" id="fw-file" accept=".bin" style="font-size:12px">
-        <input type="text" id="fw-version" placeholder="版本号，如 0.2.0" style="width:150px">
-        <button class="primary" id="btn-fw-upload">上传并发布</button>
-      </div>
-      <p class="hint">上传 <code>idf.py build</code> 产出的 <code>orbis.bin</code>（首字节 0xE9）。上传后在设备页点「下发 OTA」。</p>
-    </div>
-
-    <div class="panel">
       <strong style="font-size:14px">实体</strong>
       <input type="search" id="q" placeholder="搜索实体：灯 / 温度 / script …" style="width:100%;margin-top:10px">
       <div class="entity-list" id="entities"></div>
@@ -188,11 +191,11 @@ function route() {
     $("view-detail").classList.remove("hidden");
     renderDetail();
     loadDevices(true);
+    loadDeviceFirmware(currentDevice);
   } else if (hash === "#/settings") {
     $("view-settings").classList.remove("hidden");
     populateDeviceSelect();
     loadLayout();
-    loadFirmware();
     searchEntities();
   } else {
     $("view-list").classList.remove("hidden");
@@ -356,20 +359,19 @@ $("d-reboot").onclick = () => sendCmd({ cmd: "reboot" });
 $("d-set-bright").onclick = () => sendCmd({ cmd: "set", key: "brightness", value: Number($("d-bright").value) });
 $("d-ota").onclick = async () => {
   const st = $("d-action-status");
-  const resp = await fetch("api/firmware");
+  const resp = await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/firmware");
   const data = await resp.json();
   if (!data.ok || !data.firmware) {
     st.textContent = "先到「布局 / 固件」页上传固件";
     st.className = "status err";
     return;
   }
-  if (!data.public_url) {
+  if (!data.firmware_url) {
     st.textContent = "加载项需要配置 public_url（设备用它下载固件）";
     st.className = "status err";
     return;
   }
-  const url = data.public_url.replace(/\/$/, "") + "/local/orbis/firmware.bin";
-  sendCmd({ cmd: "ota", url: url, version: data.firmware.version });
+  sendCmd({ cmd: "ota", url: data.firmware_url, version: data.firmware.version });
 };
 
 function setLayoutStatus(text, kind) {
@@ -532,37 +534,38 @@ $("q").addEventListener("input", () => {
   searchTimer = setTimeout(searchEntities, 300);
 });
 
-async function loadFirmware() {
-  const el = $("fw-info");
+async function loadDeviceFirmware(deviceId) {
+  const el = $("d-fw-info");
+  if (!el) return;
   try {
-    const resp = await fetch("api/firmware");
+    const resp = await fetch("api/devices/" + encodeURIComponent(deviceId) + "/firmware");
     const data = await resp.json();
     if (!data.ok) { el.textContent = "读取失败"; return; }
-    if (!data.firmware) { el.textContent = "尚未上传固件"; return; }
+    if (!data.firmware) { el.textContent = "这台设备还没上传固件"; return; }
     const fw = data.firmware;
-    el.textContent = "当前 v" + fw.version + " · " + Math.round(fw.size / 1024) + " KB · " + fw.sha256.slice(0, 12) + "…";
+    el.textContent = "已存 v" + fw.version + " · " + Math.round(fw.size / 1024) + " KB";
   } catch (e) {
     el.textContent = "读取失败: " + e;
   }
 }
 
-$("btn-fw-upload").onclick = async () => {
-  const input = $("fw-file");
-  const version = $("fw-version").value.trim();
-  const el = $("fw-info");
+$("d-fw-upload").onclick = async () => {
+  if (!currentDevice) return;
+  const input = $("d-fw-file");
+  const version = $("d-fw-version").value.trim();
+  const el = $("d-fw-info");
   if (!input.files || !input.files.length) { alert("先选一个 .bin 文件"); return; }
   if (!version) { alert("填一个版本号，例如 0.2.0"); return; }
   const file = input.files[0];
   el.textContent = "上传中… " + Math.round(file.size / 1024) + " KB";
   try {
-    const resp = await fetch("api/firmware?version=" + encodeURIComponent(version), {
-      method: "POST",
-      headers: { "Content-Type": "application/octet-stream" },
-      body: file,
-    });
+    const resp = await fetch(
+      "api/devices/" + encodeURIComponent(currentDevice) + "/firmware?version=" + encodeURIComponent(version),
+      { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file }
+    );
     const data = await resp.json();
     el.textContent = data.ok
-      ? "已发布 v" + data.firmware.version + " · " + Math.round(data.firmware.size / 1024) + " KB"
+      ? "已存 v" + data.firmware.version + " · " + Math.round(data.firmware.size / 1024) + " KB"
       : "失败: " + data.error;
   } catch (e) {
     el.textContent = "失败: " + e;

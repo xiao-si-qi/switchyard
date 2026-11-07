@@ -61,8 +61,8 @@
 ## 5. cmd
 
 ```json
-{"seq":12,"cmd":"ota","url":"https://ha.example.com/local/orbis/fw/screen-0.2.0.bin","sha256":"..."}
-{"seq":13,"cmd":"layout","url":"https://ha.example.com/local/orbis/layout/hall.json"}
+{"seq":12,"cmd":"ota","url":"https://ha.example.com/local/switchyard/fw/screen-0.2.0.bin","sha256":"..."}
+{"seq":13,"cmd":"layout","url":"https://ha.example.com/local/switchyard/layout/hall.json"}
 {"seq":14,"cmd":"reboot"}
 {"seq":15,"cmd":"set","key":"brightness","value":60}
 ```
@@ -79,7 +79,7 @@
 布局这类"结构性配置"不走 cmd，而是单独一条 retained 主题：
 
 ```
-orbis/<id>/cfg      payload = 布局 JSON（和 /local/orbis/layout.json 同一格式）
+orbis/<id>/cfg      payload = 布局 JSON（和 /local/switchyard/layout.json 同一格式）
 ```
 
 - Switchyard 保存布局时 **retained 发布**到该设备专属的 `cfg` 主题；
@@ -89,7 +89,7 @@ orbis/<id>/cfg      payload = 布局 JSON（和 /local/orbis/layout.json 同一�
 - 好处：**按设备寻址**（同款屏可以有 N 个不同布局）、**主动推送**、**配置不出公网**
   （不再需要把 JSON 放到 `www` 静态目录）。
 
-设备的优先级：`NVS 里的 cfg` → `HTTP /local/orbis/layout.json` → 自动发现兜底。
+设备的优先级：`NVS 里的 cfg` → `HTTP /local/switchyard/layout.json` → 自动发现兜底。
 
 ## 6. meta（能力声明，可选）
 
