@@ -12,6 +12,7 @@ Environment:
 
 import json
 import os
+import re
 import hashlib
 import tempfile
 import threading
@@ -49,6 +50,14 @@ TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 PORT = int(os.environ.get("PORT", "8099"))
 
 MAX_FW = 4 * 1024 * 1024  # app 分区 4MB
+
+
+DEVICE_ID_RE = re.compile(r"^[a-z0-9_-]{1,31}$")
+
+
+def valid_device_id(device_id):
+    """device_id 会拼进 MQTT 主题和文件路径，必须限定字符集，防主题注入/路径穿越。"""
+    return bool(DEVICE_ID_RE.match(device_id or ""))
 
 
 def fw_paths(device_id):
@@ -301,6 +310,9 @@ class Handler(BaseHTTPRequestHandler):
             )
         elif "/api/devices/" in path and path.endswith("/firmware"):
             device_id = path.split("/api/devices/", 1)[1].rsplit("/firmware", 1)[0]
+            if not valid_device_id(device_id):
+                self.send_json({"ok": False, "error": "invalid device id"}, 400)
+                return
             _, bin_path, _ = fw_paths(device_id)
             public = (OPTS.get("public_url") or os.environ.get("PUBLIC_URL") or "").rstrip("/")
             self.send_json(
@@ -316,6 +328,9 @@ class Handler(BaseHTTPRequestHandler):
             )
         elif "/api/devices/" in path and path.endswith("/layout"):
             device_id = path.split("/api/devices/", 1)[1].rsplit("/layout", 1)[0]
+            if not valid_device_id(device_id):
+                self.send_json({"ok": False, "error": "invalid device id"}, 400)
+                return
             lp = os.path.join(LAYOUTS_DIR, device_id + ".json")
             layout = None
             if os.path.exists(lp):
@@ -374,6 +389,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if "/api/devices/" in path and path.endswith("/forget"):
             device_id = path.split("/api/devices/", 1)[1].rsplit("/forget", 1)[0]
+            if not valid_device_id(device_id):
+                self.send_json({"ok": False, "error": "invalid device id"}, 400)
+                return
             dev = STORE.get_device(device_id)
             caps = dev.get("caps") if dev else None
             STORE.forget(device_id)
@@ -388,6 +406,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": True, "forgot": device_id, "retained_cleared": cleared})
             return
         if "/api/devices/" in path and path.endswith("/cmd"):
+            did = path.split("/api/devices/", 1)[1].rsplit("/cmd", 1)[0]
+            if not valid_device_id(did):
+                self.send_json({"ok": False, "error": "invalid device id"}, 400)
+                return
             self.handle_device_cmd(path)
             return
         if path.endswith("/api/store_reload"):
@@ -395,6 +417,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": ok, "info": str(info)}, 200 if ok else 502)
             return
         if "/api/devices/" in path and path.endswith("/firmware"):
+            did = path.split("/api/devices/", 1)[1].rsplit("/firmware", 1)[0]
+            if not valid_device_id(did):
+                self.send_json({"ok": False, "error": "invalid device id"}, 400)
+                return
             self.handle_firmware_upload(path)
             return
         if not path.endswith("/api/layout"):

@@ -6,6 +6,7 @@ PINGREQ. No external dependencies, so the add-on image keeps building without pi
 
 import json
 import os
+import re
 import socket
 import struct
 import threading
@@ -227,6 +228,9 @@ class MqttClient:
         return first, body
 
 
+DEVICE_ID_RE = re.compile(r"^[a-z0-9_-]{1,31}$")
+
+
 class DeviceStore:
     """Keeps the last known state of every device, fed by retained MQTT topics.
 
@@ -279,6 +283,10 @@ class DeviceStore:
     def on_message(self, topic, payload):
         parts = topic.split("/")
         if len(parts) != 3 or parts[0] != "switchyard":
+            return
+        if not DEVICE_ID_RE.match(parts[1]):
+            # 非法设备名：可能是主题注入或路径穿越尝试，直接忽略
+            print("devices: ignoring invalid device id %r" % parts[1], flush=True)
             return
         device_id, kind = parts[1], parts[2]
         with self._lock:

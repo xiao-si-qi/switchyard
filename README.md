@@ -10,6 +10,7 @@
 | 想做什么 | 看这里 |
 |---|---|
 | 安装 / 配置加载项 | [switchyard/README.md](switchyard/README.md) |
+| **限制每台设备能发什么（ACL）** | [docs/ACL.md](docs/ACL.md) |
 | **从零跑通一遍（固件配置 → 注册 → 下发布局 → OTA）** | [docs/QUICKSTART.md](docs/QUICKSTART.md) |
 | 设备协议（主题、JSON、seq、OTA 流程） | [docs/PROTOCOL.md](docs/PROTOCOL.md) |
 | 被管理的设备固件（圆屏） | [orbis-panel](https://github.com/xiao-si-qi/orbis-panel) |
