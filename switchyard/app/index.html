@@ -2,7 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Switchyard</title>
 <style>
   :root { color-scheme: dark; }
@@ -61,6 +63,36 @@
   textarea { width: 100%; min-height: 220px; background: #0b0d12; color: #cbd5e1; border: 1px solid #2b303b;
              border-radius: 10px; padding: 10px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  /* ---------- 手机 / 窄屏 ---------- */
+  @media (max-width: 720px) {
+    header { flex-wrap: wrap; gap: 8px 10px; padding: 10px 12px; }
+    header h1 { font-size: 16px; }
+    header .spacer { display: none; }
+    header button { flex: 1 1 auto; min-height: 38px; padding: 8px 10px; }
+    header .status { flex: 1 1 100%; order: 10; font-size: 12px; }
+    main { padding: 12px; }
+    .panel { padding: 12px; border-radius: 10px; }
+    .grid { grid-template-columns: 1fr; }
+    .kv { grid-template-columns: 1fr; gap: 2px; }
+    .kv .k { font-size: 11px; margin-top: 8px; }
+    .tiles { grid-template-columns: 1fr; }
+    .tile { min-height: 64px; }
+    .actions { gap: 8px; }
+    .actions button { flex: 1 1 calc(50% - 8px); min-height: 40px; }
+    .actions .status { flex: 1 1 100%; }
+    input[type=text], input[type=search], input[type=number],
+    input[type=file], select, textarea { width: 100%; }
+    /* iOS 上字号小于 16px 会自动放大页面 */
+    input, select, textarea { font-size: 16px !important; }
+    .entity-list { max-height: 45vh; }
+    .entity { padding: 10px 9px; }
+    textarea { min-height: 160px; font-size: 13px !important; }
+    button { min-height: 36px; }
+  }
+  @media (hover: none) {
+    .dev:hover, button:hover, .entity:hover { background: inherit; border-color: inherit; }
+  }
 </style>
 </head>
 <body>
