@@ -1,5 +1,5 @@
 name: Switchyard
-version: "0.1.0"
+version: "0.2.0"
 slug: switchyard
 description: ESP32 设备统一上位机：设备台账、屏幕布局下发、固件 OTA
 url: https://github.com/xiao-si-qi/switchyard
@@ -18,5 +18,13 @@ map:
   - config:rw
 options:
   www_dir: /config/www/orbis
+  mqtt_host: core-mosquitto
+  mqtt_port: 1883
+  mqtt_username: ""
+  mqtt_password: ""
 schema:
   www_dir: str
+  mqtt_host: str
+  mqtt_port: port
+  mqtt_username: str
+  mqtt_password: password

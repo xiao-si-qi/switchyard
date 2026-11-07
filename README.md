@@ -50,7 +50,8 @@ Switchyard 提供一层统一的"设备管理"：
 - [x] 加载项骨架（ingress 面板、`homeassistant_api` 权限、零依赖 Python 标准库）
 - [x] 屏幕布局编辑器（页面 / 卡片 / 实体搜索 / 发布到 `www`）
 - [x] 固件上传（写 `firmware.bin` + `firmware.json`，设备按版本号自更新）
-- [ ] **P1** 设备台账：订阅 MQTT retained 状态，列出在线/固件/电量
+- [x] 最小 MQTT 客户端（标准库实现，无 paho 依赖）+ 设备状态缓存
+- [x] **P1** 设备台账：订阅 MQTT retained 状态，列出在线/固件/电量
 - [ ] **P2** 批量固件分发：按设备类型上传、按类型下发 `cmd:ota`
 - [ ] **P3** 配置下发：屏幕布局 / 采样周期 / 亮度，统一 push
 - [ ] 设备注册表持久化、OTA 进度回传（`event: ota_progress`）

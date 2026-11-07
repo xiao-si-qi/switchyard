@@ -45,6 +45,13 @@
   .entity .s { font-size: 11px; color: #10b981; }
   textarea { width: 100%; min-height: 260px; background: #0b0d12; color: #cbd5e1; border: 1px solid #2b303b;
              border-radius: 10px; padding: 10px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .dev { background: #1b202a; border: 1px solid #2b303b; border-radius: 12px; padding: 10px 12px; }
+  .dev .top { display: flex; align-items: center; gap: 8px; }
+  .dev .dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; }
+  .dev .dot.on { background: #30d158; }
+  .dev .id { font-size: 14px; font-weight: 600; }
+  .dev .type { font-size: 11px; color: #6b7280; margin-left: auto; }
+  .dev .meta { font-size: 12px; color: #8b93a1; margin-top: 6px; line-height: 1.5; }
   .status { font-size: 12px; color: #8b93a1; }
   .status.ok { color: #34d399; }
   .status.err { color: #f87171; }
@@ -62,6 +69,16 @@
 </header>
 
 <main>
+  <section class="panel" style="grid-column:1/-1">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <strong style="font-size:14px">设备</strong>
+      <span class="status" id="mqtt-status">MQTT 连接中…</span>
+      <span class="spacer" style="flex:1"></span>
+      <button id="btn-dev-refresh">刷新</button>
+    </div>
+    <div id="devices" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:12px"></div>
+  </section>
+
   <section class="panel">
     <div class="tabs" id="tabs"></div>
     <div class="tiles" id="tiles"></div>
@@ -302,6 +319,60 @@ $("btn-fw-upload").onclick = async () => {
 
 load().then(() => search());
 loadFirmware();
+
+function fmtAge(ts) {
+  if (!ts) return "-";
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (s < 60) return s + " 秒前";
+  if (s < 3600) return Math.floor(s / 60) + " 分钟前";
+  if (s < 86400) return Math.floor(s / 3600) + " 小时前";
+  return Math.floor(s / 86400) + " 天前";
+}
+
+async function loadDevices() {
+  const box = $("devices");
+  const st = $("mqtt-status");
+  try {
+    const resp = await fetch("api/devices");
+    const data = await resp.json();
+    const mqtt = data.mqtt || {};
+    st.textContent = mqtt.connected
+      ? "MQTT 已连接 · " + (data.devices || []).length + " 台设备"
+      : "MQTT 未连接" + (mqtt.last_error ? " · " + mqtt.last_error : "");
+    st.className = "status " + (mqtt.connected ? "ok" : "err");
+
+    box.innerHTML = "";
+    const devices = data.devices || [];
+    if (!devices.length) {
+      box.innerHTML = "<div class='dev'><div class='meta'>还没有设备上报。设备连上 MQTT 后发布 <code>orbis/&lt;id&gt;/state</code> 就会出现在这里。</div></div>";
+      return;
+    }
+    devices.forEach((d) => {
+      const el = document.createElement("div");
+      el.className = "dev";
+      el.innerHTML = "<div class='top'><span class='dot'></span><span class='id'></span><span class='type'></span></div><div class='meta'></div>";
+      if (d.online) el.querySelector(".dot").classList.add("on");
+      el.querySelector(".id").textContent = d.id;
+      el.querySelector(".type").textContent = d.type;
+      const bits = [];
+      if (d.fw) bits.push("固件 " + d.fw);
+      if (d.rssi !== null && d.rssi !== undefined) bits.push(d.rssi + " dBm");
+      if (d.battery !== null && d.battery !== undefined) bits.push("电量 " + d.battery + "%");
+      if (d.ip) bits.push(d.ip);
+      bits.push("最后上报 " + fmtAge(d.last_seen));
+      el.querySelector(".meta").textContent = bits.join(" · ");
+      box.appendChild(el);
+    });
+  } catch (e) {
+    st.textContent = "读取设备失败: " + e;
+    st.className = "status err";
+  }
+}
+
+$("btn-dev-refresh").onclick = loadDevices;
+loadDevices();
+setInterval(loadDevices, 5000);
+
 </script>
 </body>
 </html>

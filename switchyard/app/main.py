@@ -18,6 +18,8 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import mqtt_bridge
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -170,6 +172,7 @@ class Handler(BaseHTTPRequestHandler):
                     "layout_path": LAYOUT_PATH,
                     "layout_exists": os.path.exists(LAYOUT_PATH),
                     "token": bool(TOKEN),
+                    "mqtt": mqtt_status(),
                 }
             )
         elif path.endswith("/api/firmware"):
@@ -180,6 +183,14 @@ class Handler(BaseHTTPRequestHandler):
                     "firmware": meta,
                     "present": os.path.exists(FW_PATH),
                     "max_size": MAX_FW,
+                }
+            )
+        elif path.endswith("/api/devices"):
+            self.send_json(
+                {
+                    "ok": True,
+                    "mqtt": mqtt_status(),
+                    "devices": STORE.snapshot(),
                 }
             )
         elif path.endswith("/api/entities"):
@@ -218,6 +229,9 @@ class Handler(BaseHTTPRequestHandler):
     # --- POST ------------------------------------------------------------
     def do_POST(self):
         path = self.route()
+        if "/api/devices/" in path and path.endswith("/cmd"):
+            self.handle_device_cmd(path)
+            return
         if path.endswith("/api/firmware"):
             self.handle_firmware_upload()
             return
@@ -244,6 +258,31 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": False, "error": str(exc)}, 500)
             return
         self.send_json({"ok": True, "version": data["version"], "layout_path": LAYOUT_PATH})
+
+    def handle_device_cmd(self, path):
+        # /api/devices/<id>/cmd
+        try:
+            device_id = path.split("/api/devices/", 1)[1].rsplit("/cmd", 1)[0]
+        except IndexError:
+            self.send_json({"ok": False, "error": "bad path"}, 400)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b"{}"
+            cmd = json.loads(raw.decode("utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            self.send_json({"ok": False, "error": "invalid JSON: %s" % exc}, 400)
+            return
+        if not isinstance(cmd, dict) or "cmd" not in cmd:
+            self.send_json({"ok": False, "error": "cmd field is required"}, 400)
+            return
+        if MQTT is None or not MQTT.connected:
+            self.send_json({"ok": False, "error": "MQTT not connected"}, 503)
+            return
+        cmd["seq"] = STORE.next_seq(device_id)
+        topic = "orbis/%s/cmd" % device_id
+        ok = MQTT.publish(topic, json.dumps(cmd, ensure_ascii=False), retain=True)
+        self.send_json({"ok": ok, "seq": cmd["seq"], "topic": topic}, 200 if ok else 500)
 
     def handle_firmware_upload(self):
         params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -282,8 +321,30 @@ class Handler(BaseHTTPRequestHandler):
         print("%s - %s" % (self.address_string(), fmt % args), flush=True)
 
 
+STORE = mqtt_bridge.DeviceStore()
+MQTT = None
+
+
+def start_mqtt():
+    """按加载项选项启动 MQTT 订阅；没配 host 就不启，界面显示未连接。"""
+    host = OPTS.get("mqtt_host") or os.environ.get("MQTT_HOST") or "core-mosquitto"
+    port = OPTS.get("mqtt_port") or int(os.environ.get("MQTT_PORT") or 1883)
+    user = OPTS.get("mqtt_username") or os.environ.get("MQTT_USERNAME") or ""
+    password = OPTS.get("mqtt_password") or os.environ.get("MQTT_PASSWORD") or ""
+    global MQTT
+    MQTT = mqtt_bridge.MqttClient(host, port, user, password, client_id="switchyard")
+    MQTT.set_on_message(STORE.on_message)
+    MQTT.start(["orbis/+/state", "orbis/+/availability", "orbis/+/event"])
+    print("mqtt: connecting to %s:%s as %s" % (host, port, user or "<anonymous>"), flush=True)
+
+
+def mqtt_status():
+    return MQTT.status() if MQTT else {"connected": False, "host": "", "last_error": "not started"}
+
+
 def main():
     os.makedirs(os.path.dirname(LAYOUT_PATH) or ".", exist_ok=True)
+    start_mqtt()
     print("Switchyard on 0.0.0.0:%d, layout=%s" % (PORT, LAYOUT_PATH), flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 
