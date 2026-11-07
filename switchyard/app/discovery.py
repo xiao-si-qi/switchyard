@@ -35,7 +35,7 @@ MANUFACTURER = "Switchyard"
 DEFAULT_CAPS = {
     "screen": ["fw", "rssi", "uptime", "layout", "ota", "reboot", "brightness", "online"],
     "meter": ["fw", "rssi", "uptime", "battery", "battery_v", "water", "climate",
-              "leak", "comm_fault", "online", "valve", "ota", "reboot"],
+              "leak", "comm_fault", "online", "valve", "ota", "reboot", "log"],
     "elink": ["fw", "rssi", "uptime", "battery", "battery_v", "climate",
               "leak", "online", "ota", "reboot"],
     "unknown": ["fw", "rssi", "uptime", "online", "ota", "reboot"],
@@ -85,6 +85,8 @@ SPECS = {
                    "command_template": '{"cmd":"set","key":"brightness","value":{{ value }}}'},
     "online": {"kind": "binary_sensor", "name": "在线", "device_class": "connectivity",
                "availability": True},
+    "log": {"kind": "sensor", "name": "最近错误", "icon": "mdi:alert-circle-outline",
+            "diag": True, "diagnostic": True},
 }
 
 
@@ -129,7 +131,12 @@ def _configs(device_id, state, caps):
         if spec.get("diagnostic"):
             cfg["entity_category"] = "diagnostic"
 
-        if kind in ("sensor", "binary_sensor") and spec.get("availability"):
+        if spec.get("diag"):
+            cfg.update({
+                "state_topic": "switchyard/%s/diag" % device_id,
+                "value_template": "{{ value_json.line }}",
+            })
+        elif kind in ("sensor", "binary_sensor") and spec.get("availability"):
             cfg.update({
                 "state_topic": avail_topic,
                 "payload_on": "online",

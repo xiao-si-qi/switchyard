@@ -307,6 +307,11 @@ class DeviceStore:
                 except json.JSONDecodeError:
                     dev["state"] = {"raw": payload}
                 dev["availability"] = "online"
+            elif kind == "log":
+                dev["log"] = payload
+                dev["log_at"] = time.time()
+            elif kind == "diag":
+                dev["diag"] = payload
             elif kind == "cfg":
                 # 设备回读或收到下发时都会发到 cfg；缓存下来给编辑器用
                 dev["cfg"] = payload
@@ -363,6 +368,14 @@ class DeviceStore:
                 )
             out.sort(key=lambda d: d["id"])
             return out
+
+    def device_log(self, device_id):
+        """最近一次抓取的日志：(文本, 时间戳)。"""
+        with self._lock:
+            dev = self._devices.get(device_id)
+            if dev is None:
+                return None, 0.0
+            return dev.get("log"), dev.get("log_at", 0.0)
 
     def device_cfg(self, device_id):
         """设备当前布局（原样 JSON 字符串），没收到过返回 None。"""

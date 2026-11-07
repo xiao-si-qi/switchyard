@@ -96,6 +96,7 @@ HA 的 Mosquitto 加载项用 Home Assistant 的账号做认证（不是 anonymo
 | `reboot` | button：重启 |
 | `ota` | button：检查更新 |
 | `brightness` | number：亮度 |
+| `log` | 设备页「抓日志」按钮 + HA「最近错误」sensor（diag）|
 | `layout` | 不是实体，是设备页「布局」面板的开关 |
 
 设备没上报 `meta` 时按 `type` 用默认能力（`screen` / `meter` / `elink` / `unknown`）。

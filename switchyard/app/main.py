@@ -67,7 +67,7 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 # 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
-FALLBACK_VERSION = "0.9.1"
+FALLBACK_VERSION = "0.10.0"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
@@ -523,6 +523,30 @@ def api_device_forget(device_id):
     return jsonify({"ok": True, "forgot": device_id, "retained_cleared": cleared})
 
 
+@app.post("/api/devices/<device_id>/log")
+def api_device_log(device_id):
+    """让设备回传最近 N 行日志（远程诊断）。"""
+    err = bad_id(device_id)
+    if err:
+        return err
+    if MQTT is None or not MQTT.connected:
+        return jsonify({"ok": False, "error": "MQTT not connected"}), 503
+
+    payload = request.get_json(silent=True) or {}
+    lines = int(payload.get("lines") or 40)
+    before = STORE.device_log(device_id)[1]
+    if not send_device_cmd(device_id, {"cmd": "log", "lines": lines}):
+        return jsonify({"ok": False, "error": "send failed"}), 500
+
+    deadline = time.time() + 3.5
+    while time.time() < deadline:
+        text, at = STORE.device_log(device_id)
+        if text and at > before:
+            return jsonify({"ok": True, "device": device_id, "log": text})
+        time.sleep(0.1)
+    return jsonify({"ok": False, "error": "设备没有回传日志（可能不在线或不支持 log 能力）"}), 504
+
+
 @app.get("/api/self_update")
 def api_self_update():
     force = (request.args.get("force") or "0") not in ("0", "", "false")
@@ -619,7 +643,7 @@ def start_mqtt():
     MQTT = mqtt_bridge.MqttClient(host, port, user, password, client_id="switchyard")
     MQTT.set_on_message(on_mqtt_message)
     MQTT.start(["switchyard/+/state", "switchyard/+/availability", "switchyard/+/event",
-                "switchyard/+/cfg"])
+                "switchyard/+/cfg", "switchyard/+/diag", "switchyard/+/log"])
     threading.Thread(target=discovery_loop, daemon=True).start()
     print("mqtt: connecting to %s:%s as %s" % (host, port, user or "<anonymous>"), flush=True)
 

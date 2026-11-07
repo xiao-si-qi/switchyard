@@ -19,6 +19,8 @@
 | `switchyard/<id>/event` | 设备 → HA | ❌ | JSON 事件，见 §4 |
 | `switchyard/<id>/cmd` | Switchyard → 设备 | ✅ | JSON 命令，见 §5 |
 | `switchyard/<id>/cfg` | Switchyard → 设备 | ✅ | **配置下发（布局 JSON）**，见 §5.1 |
+| `switchyard/<id>/diag` | 设备 → 上位机 | ✅ | 错误摘要（≤1KB，限流 1 条/分钟）|
+| `switchyard/<id>/log` | 设备 → 上位机 | ❌ | **按需**回传最近 N 行日志，非 retained |
 | `switchyard/<id>/ack` | 设备 → HA | ❌ | `{"seq":N,"ok":true,"err":"..."}` |
 | `switchyard/<id>/meta` | 设备 → HA | ✅ | **能力声明**，见 §6（推荐；缺省按 type 兜底） |
 

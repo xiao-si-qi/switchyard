@@ -205,6 +205,21 @@
       <div class="entity-list" id="entities"></div>
     </div>
 
+    <div class="panel hidden" id="d-log-panel">
+      <div class="row">
+        <strong style="font-size:14px">远程日志</strong>
+        <button id="d-log">抓日志</button>
+        <span class="status" id="d-log-status"></span>
+      </div>
+      <p class="hint">
+        设备只在被请求时回传最近 40 行日志（不主动推流，避免刷爆 broker 和 HA 历史）。
+        错误摘要会以 <code>switchyard/&lt;id&gt;/diag</code> 保留一条，对应 HA 的「最近错误」实体。
+      </p>
+      <pre id="d-log-text" class="hidden"
+           style="max-height:320px;overflow:auto;font-size:12px;background:#0b0d12;border:1px solid #2b303b;
+                  border-radius:10px;padding:10px;margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+    </div>
+
     <div class="panel">
       <strong style="font-size:14px">原始 state</strong>
       <pre id="d-raw" style="font-size:12px;color:#8b93a1;white-space:pre-wrap;word-break:break-all;margin:8px 0 0"></pre>
@@ -408,6 +423,7 @@ function renderDetail() {
   const canLayout = has("layout");
   $("d-layout-panel").classList.toggle("hidden", !canLayout);
   $("d-entities-panel").classList.toggle("hidden", !canLayout);
+  $("d-log-panel").classList.toggle("hidden", !has("log"));
   if (canLayout) {
     searchEntities();
   }
@@ -476,6 +492,34 @@ $("d-layout").onclick = () => {
   // 布局面板就在本页，滚过去即可
   const panel = $("d-layout-panel");
   if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
+$("d-log").onclick = async () => {
+  if (!currentDevice) return;
+  const st = $("d-log-status");
+  const box = $("d-log-text");
+  st.textContent = "请求中…";
+  st.className = "status";
+  try {
+    const resp = await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lines: 40 }),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      st.textContent = "失败: " + data.error;
+      st.className = "status err";
+      return;
+    }
+    box.textContent = data.log;
+    box.classList.remove("hidden");
+    st.textContent = "已获取 " + data.log.split(/\n/).length + " 行";
+    st.className = "status ok";
+  } catch (e) {
+    st.textContent = "失败: " + e;
+    st.className = "status err";
+  }
 };
 
 $("btn-cfg-read").onclick = async () => {
