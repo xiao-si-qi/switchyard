@@ -49,6 +49,27 @@ HA 的 Mosquitto 加载项用 Home Assistant 的账号做认证（不是 anonymo
 - 支持 N 块同款屏各用各的布局（设备 id 由固件自动生成 `orbis-xxxx`）；
 - 设备详情页的「编辑本设备布局」会自动把目标切到那台设备。
 
+### 设备能力声明（caps，0.7.0）
+
+设备上线时发一次 retained 的 `switchyard/<id>/meta`，告诉插件它会什么：
+
+```json
+{"type": "screen", "caps": ["layout", "ota", "reboot", "brightness"],
+ "display": {"w": 360, "h": 360}, "fw": "0.2.0"}
+```
+
+插件按 `caps` 决定发哪些实体/显示哪些按钮：
+
+| caps | 效果 |
+|---|---|
+| `reboot` | HA `button.重启` + 详情页「重启」 |
+| `ota` | HA `button.检查更新` + 详情页「下发 OTA」 |
+| `brightness` | HA `number.亮度` + 详情页亮度输入 |
+| `layout` | 详情页「编辑本设备布局」 |
+
+没上报 `meta` 的设备按 `type` 用默认能力（`screen` 全功能，其它 `ota`+`reboot`），
+所以老设备不受影响；详情页会显示一行「能力: …」。
+
 ### 自动变成 HA 实体（MQTT Discovery）
 
 每台注册的设备，Switchyard 会替它发布一套 HA MQTT Discovery（retained），

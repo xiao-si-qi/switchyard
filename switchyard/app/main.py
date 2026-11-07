@@ -267,8 +267,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if "/api/devices/" in path and path.endswith("/forget"):
             device_id = path.split("/api/devices/", 1)[1].rsplit("/forget", 1)[0]
+            dev = STORE.get_device(device_id)
+            caps = dev.get("caps") if dev else None
             STORE.forget(device_id)
-            discovery.remove_device(MQTT, device_id)
+            discovery.remove_device(MQTT, device_id, caps)
             DISCOVERY_SEEN.pop(device_id, None)
             cleared = []
             if MQTT is not None and MQTT.connected:
@@ -417,14 +419,14 @@ DISCOVERY_SEEN = {}
 
 def on_mqtt_message(topic, payload):
     STORE.on_message(topic, payload)
-    if topic.endswith("/state"):
+    if topic.endswith("/state") or topic.endswith("/meta"):
         device_id = topic.split("/")[1]
         dev = STORE.get_device(device_id)
         if dev is None:
             return
-        key = (dev.get("type"), dev.get("fw"))
+        key = (dev.get("type"), dev.get("fw"), tuple(dev.get("caps") or []))
         if DISCOVERY_SEEN.get(device_id) != key:
-            n = discovery.publish_device(MQTT, device_id, dev["raw"])
+            n = discovery.publish_device(MQTT, device_id, dev["raw"], dev.get("caps"))
             if n:
                 DISCOVERY_SEEN[device_id] = key
                 print("discovery: %d entities for %s" % (n, device_id), flush=True)
@@ -437,7 +439,7 @@ def discovery_loop():
         if MQTT is None or not MQTT.connected:
             continue
         for dev in STORE.snapshot():
-            discovery.publish_device(MQTT, dev["id"], dev["raw"])
+            discovery.publish_device(MQTT, dev["id"], dev["raw"], dev.get("caps"))
 
 
 def start_mqtt():

@@ -20,7 +20,7 @@
 | `switchyard/<id>/cmd` | Switchyard → 设备 | ✅ | JSON 命令，见 §5 |
 | `switchyard/<id>/cfg` | Switchyard → 设备 | ✅ | **配置下发（布局 JSON）**，见 §5.1 |
 | `switchyard/<id>/ack` | 设备 → HA | ❌ | `{"seq":N,"ok":true,"err":"..."}` |
-| `switchyard/<id>/meta` | 设备 → HA | ✅ | 静态能力声明，见 §6（可选） |
+| `switchyard/<id>/meta` | 设备 → HA | ✅ | **能力声明**，见 §6（推荐；缺省按 type 兜底） |
 
 ## 3. state 快照
 

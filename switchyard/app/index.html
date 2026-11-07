@@ -92,6 +92,7 @@
         <span class="status" id="d-status"></span>
       </div>
       <div class="kv" id="d-kv" style="margin-top:14px"></div>
+      <p class="hint" id="d-caps" style="margin-top:10px"></p>
     </div>
 
     <div class="panel">
@@ -104,7 +105,7 @@
         <span class="status" id="d-action-status"></span>
       </div>
       <div class="actions">
-        <span class="status">亮度</span>
+        <span class="status" id="d-bright-label">亮度</span>
         <input type="number" id="d-bright" min="10" max="100" value="80" style="width:90px">
         <button id="d-set-bright">发送</button>
       </div>
@@ -178,6 +179,7 @@ let layout = { title: "Home", pages: [{ name: "Devices", tiles: [] }] };
 let page = 0;
 let devices = [];
 let currentDevice = null;
+let currentCaps = [];
 let cfgDevice = "";
 let pollTimer = null;
 
@@ -316,6 +318,15 @@ function renderDetail() {
     kv.appendChild(kd);
     kv.appendChild(vd);
   });
+  currentCaps = d.caps || [];
+  const has = (c) => currentCaps.indexOf(c) >= 0;
+  $("d-reboot").classList.toggle("hidden", !has("reboot"));
+  $("d-ota").classList.toggle("hidden", !has("ota"));
+  $("d-layout").classList.toggle("hidden", !has("layout"));
+  $("d-bright").classList.toggle("hidden", !has("brightness"));
+  $("d-set-bright").classList.toggle("hidden", !has("brightness"));
+  $("d-bright-label").classList.toggle("hidden", !has("brightness"));
+  $("d-caps").textContent = currentCaps.length ? "能力: " + currentCaps.join(" / ") : "能力: 未上报（按类型默认）";
   $("d-raw").textContent = JSON.stringify(d.raw, null, 2);
 }
 

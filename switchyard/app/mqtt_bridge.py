@@ -293,6 +293,11 @@ class DeviceStore:
                 except json.JSONDecodeError:
                     dev["state"] = {"raw": payload}
                 dev["availability"] = "online"
+            elif kind == "meta":
+                try:
+                    dev["meta"] = json.loads(payload)
+                except json.JSONDecodeError:
+                    dev["meta"] = {}
             elif kind == "event":
                 try:
                     dev["event"] = json.loads(payload)
@@ -300,6 +305,20 @@ class DeviceStore:
                     dev["event"] = {"raw": payload}
             dev["last_seen"] = int(time.time())
             self._save()
+
+    DEFAULT_CAPS = {
+        "screen": ["layout", "ota", "reboot", "brightness"],
+        "elink": ["ota", "reboot"],
+        "meter": ["ota", "reboot"],
+        "sensor": ["ota", "reboot"],
+    }
+
+    def _caps(self, dev):
+        meta = dev.get("meta") or {}
+        caps = meta.get("caps")
+        if isinstance(caps, list) and caps:
+            return caps
+        return self.DEFAULT_CAPS.get(dev.get("type") or "", ["ota", "reboot"])
 
     def snapshot(self):
         now = int(time.time())
@@ -309,12 +328,15 @@ class DeviceStore:
                 state = dict(dev["state"])
                 fresh = dev["last_seen"] and (now - dev["last_seen"]) <= self._stale_after
                 online = dev["availability"] == "online" and fresh
+                meta = dev.get("meta") or {}
+                dev_type = meta.get("type") or state.get("type", "unknown")
                 out.append(
                     {
                         "id": dev["id"],
                         "online": online,
                         "availability": dev["availability"],
-                        "type": state.get("type", "unknown"),
+                        "type": dev_type,
+                        "caps": self._caps(dev),
                         "fw": state.get("fw"),
                         "rssi": state.get("rssi"),
                         "uptime": state.get("uptime"),
@@ -338,11 +360,13 @@ class DeviceStore:
             state = dict(dev["state"])
             now = int(time.time())
             fresh = dev["last_seen"] and (now - dev["last_seen"]) <= self._stale_after
+            meta = dev.get("meta") or {}
             return {
                 "id": dev["id"],
                 "online": dev["availability"] == "online" and fresh,
                 "availability": dev["availability"],
-                "type": state.get("type", "unknown"),
+                "type": meta.get("type") or state.get("type", "unknown"),
+                "caps": self._caps(dev),
                 "fw": state.get("fw"),
                 "last_seen": dev["last_seen"],
                 "raw": state,
