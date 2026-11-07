@@ -56,7 +56,18 @@ Switchyard 提供一层统一的"设备管理"：
 - [ ] **P3** 配置下发：屏幕布局 / 采样周期 / 亮度，统一 push
 - [ ] 设备注册表持久化、OTA 进度回传（`event: ota_progress`）
 
+## 从 Orbis Panel Editor 迁移
+
+本加载项原名 **Orbis Panel Editor**，最初放在 [orbis-panel](https://github.com/xiao-si-qi/orbis-panel) 仓库里。
+现在那个仓库只维护圆屏固件，插件全部搬到这里：
+
+1. HA 加载项商店 → 卸载 **Orbis Panel Editor**；
+2. ⋮ → 仓库 → 移除 `https://github.com/xiao-si-qi/orbis-panel`；
+3. 添加 `https://github.com/xiao-si-qi/switchyard`，安装 **Switchyard**；
+4. 发布目录默认仍是 `/config/www/orbis`，已有的 `layout.json` / `firmware.json` **不需要迁移**。
+
 ## 兼容性
+
 
 现有的 Orbis Panel 固件（[orbis-panel](https://github.com/xiao-si-qi/orbis-panel)）默认从
 `<ha>/local/orbis/layout.json` 和 `<ha>/local/orbis/firmware.json` 取文件，
