@@ -67,7 +67,7 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 # 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
-FALLBACK_VERSION = "0.11.7"
+FALLBACK_VERSION = "0.11.8"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
@@ -500,7 +500,8 @@ def api_device_cmd(device_id):
         return jsonify({"ok": False, "error": "MQTT not connected"}), 503
     cmd["seq"] = STORE.next_seq(device_id)
     topic = "switchyard/%s/cmd" % device_id
-    ok = MQTT.publish(topic, json.dumps(cmd, ensure_ascii=False), retain=True)
+    # 命令是一次性动作，不 retain：否则会堆在 broker 上，设备重启还会被重放
+    ok = MQTT.publish(topic, json.dumps(cmd, ensure_ascii=False), retain=False)
     return jsonify({"ok": ok, "seq": cmd["seq"], "topic": topic}), (200 if ok else 500)
 
 
@@ -778,7 +779,7 @@ def send_device_cmd(device_id, cmd):
     payload = dict(cmd)
     payload["seq"] = STORE.next_seq(device_id)
     topic = "switchyard/%s/cmd" % device_id
-    return MQTT.publish(topic, json.dumps(payload, ensure_ascii=False), retain=True)
+    return MQTT.publish(topic, json.dumps(payload, ensure_ascii=False), retain=False)
 
 
 def discovery_loop():
