@@ -67,7 +67,7 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 # 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
-FALLBACK_VERSION = "0.11.0"
+FALLBACK_VERSION = "0.11.1"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
@@ -551,18 +551,49 @@ def api_device_log(device_id):
 # 背景图：上传 → 裁成 360×360 JPEG → 设备自己下载解码
 # ---------------------------------------------------------------------------
 BG_MAX_SLOTS = 8
-BG_SIZE = 360
+BG_DEFAULT_W = 360
+BG_DEFAULT_H = 360
+
+
+def pil_to_rgb565(img):
+    """RGB → RGB565 小端（LVGL lv_color_t 的字节序）。Pillow 10 已移除 BGR;16 编码。"""
+    raw = img.tobytes("raw", "RGB")
+    out = bytearray(len(raw) // 3 * 2)
+    j = 0
+    for i in range(0, len(raw), 3):
+        r = raw[i]
+        g = raw[i + 1]
+        b = raw[i + 2]
+        v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+        out[j] = v & 0xFF
+        out[j + 1] = (v >> 8) & 0xFF
+        j += 2
+    return bytes(out)
+
+
+def device_display(device_id):
+    """设备声明的屏幕规格：w/h/formats/fit，取不到就用默认值。"""
+    dev = STORE.get_device(device_id) or {}
+    disp = dev.get("display") or {}
+    try:
+        w = int(disp.get("w") or BG_DEFAULT_W)
+        h = int(disp.get("h") or BG_DEFAULT_H)
+    except (TypeError, ValueError):
+        w, h = BG_DEFAULT_W, BG_DEFAULT_H
+    formats = disp.get("formats") or ["jpeg"]
+    fits = disp.get("fit") or ["cover", "contain"]
+    return {"w": w, "h": h, "formats": formats, "fit": fits}
 
 
 def bg_dir(device_id):
     return os.path.join(WWW_DIR, device_id, "bg")
 
 
-def bg_url(device_id, slot):
+def bg_url(device_id, slot, ext="jpg"):
     public = (OPTS.get("public_url") or os.environ.get("PUBLIC_URL") or "").rstrip("/")
     if not public:
         return ""
-    return "%s%s/%s/bg/%d.jpg" % (public, local_prefix(), device_id, slot)
+    return "%s%s/%s/bg/%d.%s" % (public, local_prefix(), device_id, slot, ext)
 
 
 @app.get("/api/devices/<device_id>/background")
@@ -574,14 +605,17 @@ def api_device_background_list(device_id):
     slots = []
     if os.path.isdir(folder):
         for name in sorted(os.listdir(folder)):
-            if name.endswith(".jpg"):
-                try:
-                    slot = int(name[:-4])
-                except ValueError:
-                    continue
-                path = os.path.join(folder, name)
-                slots.append({"slot": slot, "url": bg_url(device_id, slot),
-                              "bytes": os.path.getsize(path)})
+            stem, _dot, ext = name.partition(".")
+            if ext not in ("jpg", "rgb565"):
+                continue
+            try:
+                slot = int(stem)
+            except ValueError:
+                continue
+            path = os.path.join(folder, name)
+            slots.append({"slot": slot, "url": bg_url(device_id, slot, ext),
+                          "format": "rgb565" if ext == "rgb565" else "jpeg",
+                          "bytes": os.path.getsize(path)})
     return jsonify({"ok": True, "device": device_id, "images": slots, "max": BG_MAX_SLOTS})
 
 
@@ -600,13 +634,24 @@ def api_device_background_upload(device_id):
     if slot < 1 or slot > BG_MAX_SLOTS:
         return jsonify({"ok": False, "error": "slot 必须是 1..%d" % BG_MAX_SLOTS}), 400
 
+    disp = device_display(device_id)
+    # 格式以设备声明为准：优先 jpeg（体积小、设备端只需 JPEG 解码器）
+    fmt = "jpeg" if "jpeg" in [f.lower() for f in disp["formats"]] else disp["formats"][0].lower()
+    if fmt not in ("jpeg", "rgb565"):
+        return jsonify({"ok": False, "error": "设备声明的格式暂不支持: %s" % fmt}), 400
+
     mode = (request.args.get("mode") or "cover").lower()
+    if mode not in disp["fit"]:
+        mode = disp["fit"][0] if disp["fit"] else "cover"
+
     raw = request.get_data(cache=False)
     if not raw:
         return jsonify({"ok": False, "error": "empty body"}), 400
     if len(raw) > 12 * 1024 * 1024:
         return jsonify({"ok": False, "error": "图片太大（上限 12 MB）"}), 413
 
+    target_w, target_h = disp["w"], disp["h"]
+    ext = "jpg"
     try:
         from PIL import Image, ImageOps
         import io as _io
@@ -615,23 +660,39 @@ def api_device_background_upload(device_id):
         img = ImageOps.exif_transpose(img).convert("RGB")
 
         if mode == "contain":
-            img.thumbnail((BG_SIZE, BG_SIZE), Image.LANCZOS)
-            canvas = Image.new("RGB", (BG_SIZE, BG_SIZE), (0, 0, 0))
-            canvas.paste(img, ((BG_SIZE - img.width) // 2, (BG_SIZE - img.height) // 2))
+            img.thumbnail((target_w, target_h), Image.LANCZOS)
+            canvas = Image.new("RGB", (target_w, target_h), (0, 0, 0))
+            canvas.paste(img, ((target_w - img.width) // 2, (target_h - img.height) // 2))
             img = canvas
         else:  # cover
-            img = ImageOps.fit(img, (BG_SIZE, BG_SIZE), Image.LANCZOS, centering=(0.5, 0.5))
+            img = ImageOps.fit(img, (target_w, target_h), Image.LANCZOS, centering=(0.5, 0.5))
 
         folder = bg_dir(device_id)
         os.makedirs(folder, exist_ok=True)
-        path = os.path.join(folder, "%d.jpg" % slot)
-        img.save(path, "JPEG", quality=88, optimize=True)
+        if fmt == "rgb565":
+            ext = "rgb565"
+            path = os.path.join(folder, "%d.%s" % (slot, ext))
+            with open(path, "wb") as fh:
+                fh.write(pil_to_rgb565(img))
+        else:
+            path = os.path.join(folder, "%d.jpg" % slot)
+            img.save(path, "JPEG", quality=88, optimize=True)
     except Exception as exc:  # noqa: BLE001
         return jsonify({"ok": False, "error": "图片处理失败: %s" % exc}), 400
 
-    print("background %s slot %d saved (%d bytes)" % (device_id, slot, os.path.getsize(path)), flush=True)
-    return jsonify({"ok": True, "device": device_id, "slot": slot,
-                    "url": bg_url(device_id, slot), "bytes": os.path.getsize(path)})
+    print("background %s slot %d saved (%dx%d %s, %d bytes)" % (
+        device_id, slot, target_w, target_h, fmt, os.path.getsize(path)), flush=True)
+    return jsonify({"ok": True, "device": device_id, "slot": slot, "format": fmt,
+                    "width": target_w, "height": target_h,
+                    "url": bg_url(device_id, slot, ext), "bytes": os.path.getsize(path)})
+
+
+@app.get("/api/devices/<device_id>/display")
+def api_device_display(device_id):
+    err = bad_id(device_id)
+    if err:
+        return err
+    return jsonify({"ok": True, "device": device_id, "display": device_display(device_id)})
 
 
 @app.delete("/api/devices/<device_id>/background/<int:slot>")
@@ -639,9 +700,10 @@ def api_device_background_delete(device_id, slot):
     err = bad_id(device_id)
     if err:
         return err
-    path = os.path.join(bg_dir(device_id), "%d.jpg" % slot)
-    if os.path.exists(path):
-        os.remove(path)
+    for ext in ("jpg", "rgb565"):
+        path = os.path.join(bg_dir(device_id), "%d.%s" % (slot, ext))
+        if os.path.exists(path):
+            os.remove(path)
     return jsonify({"ok": True, "device": device_id, "slot": slot})
 
 

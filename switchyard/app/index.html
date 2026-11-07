@@ -210,8 +210,8 @@
         <strong style="font-size:14px">背景图（轮播）</strong>
         <span class="status" id="d-bg-status"></span>
       </div>
-      <p class="hint">
-        上传的图片会被裁成 360×360 JPEG（第 1 张=cover，第 2 张起可选 contain），存到
+      <p class="hint" id="d-bg-spec">
+        上传的图片会按设备声明的屏幕尺寸与格式转换，存到
         <code>/config/www/switchyard/&lt;设备&gt;/bg/</code>，设备自己下载并解码。
       </p>
       <div class="row" style="margin-top:10px">
@@ -524,6 +524,16 @@ async function loadBackground() {
   if (!currentDevice) return;
   const box = $("d-bg-list");
   box.innerHTML = "";
+  try {
+    const dr = await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/display");
+    const dd = await dr.json();
+    if (dd.ok) {
+      const x = dd.display;
+      $("d-bg-spec").textContent = "设备屏幕: " + x.w + "×" + x.h +
+        " · 支持格式: " + (x.formats || []).join("/") +
+        " · 填充: " + (x.fit || []).join("/") + "；上传后按此规格裁剪转换。";
+    }
+  } catch (e) { /* 忽略，保留默认文案 */ }
   try {
     const resp = await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/background");
     const data = await resp.json();
