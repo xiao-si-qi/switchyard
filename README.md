@@ -51,8 +51,10 @@ Switchyard 提供一层统一的"设备管理"：
 
 ## 安装（Home Assistant 加载项）
 
-1. HA → 设置 → 加载项商店 → ⋮ → 仓库，添加本仓库地址；
-2. 安装 **Switchyard**，启动，左侧栏出现面板。
+1. HA → 设置 → 加载项商店 → ⋮ → 仓库，添加：
+   `https://github.com/xiao-si-qi/switchyard`
+2. 安装 **Switchyard**，启动，左侧栏出现面板；
+3. 打开「配置」填 MQTT 账号（`mqtt_username` / `mqtt_password`），重启加载项。
 
 ## 现状与路线
 
