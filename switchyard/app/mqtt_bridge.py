@@ -335,7 +335,8 @@ class DeviceStore:
         caps = meta.get("caps")
         if isinstance(caps, list) and caps:
             return caps
-        dev_type = meta.get("type") or dev.get("type") or "unknown"
+        # 注意：DeviceStore 的条目里类型在 dev["state"]["type"]，没有顶层的 type
+        dev_type = meta.get("type") or (dev.get("state") or {}).get("type") or "unknown"
         return discovery.DEFAULT_CAPS.get(dev_type, discovery.DEFAULT_CAPS["unknown"])
 
     def snapshot(self):
