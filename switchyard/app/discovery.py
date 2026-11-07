@@ -33,7 +33,7 @@ MANUFACTURER = "Switchyard"
 
 # 每类设备的默认能力（设备没上报 meta 时使用）
 DEFAULT_CAPS = {
-    "screen": ["fw", "rssi", "uptime", "layout", "ota", "reboot", "brightness", "online"],
+    "screen": ["fw", "rssi", "uptime", "layout", "ota", "reboot", "brightness", "log", "online"],
     "meter": ["fw", "rssi", "uptime", "battery", "battery_v", "water", "climate",
               "leak", "comm_fault", "online", "valve", "ota", "reboot", "log"],
     "elink": ["fw", "rssi", "uptime", "battery", "battery_v", "climate",

@@ -67,7 +67,7 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 # 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
-FALLBACK_VERSION = "0.10.6"
+FALLBACK_VERSION = "0.10.7"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
@@ -645,7 +645,7 @@ def start_mqtt():
     MQTT = mqtt_bridge.MqttClient(host, port, user, password, client_id="switchyard")
     MQTT.set_on_message(on_mqtt_message)
     MQTT.start(["switchyard/+/state", "switchyard/+/availability", "switchyard/+/event",
-                "switchyard/+/cfg", "switchyard/+/diag", "switchyard/+/log"])
+                "switchyard/+/meta", "switchyard/+/cfg", "switchyard/+/diag", "switchyard/+/log"])
     threading.Thread(target=discovery_loop, daemon=True).start()
     print("mqtt: connecting to %s:%s as %s" % (host, port, user or "<anonymous>"), flush=True)
 
