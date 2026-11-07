@@ -90,6 +90,7 @@ class MqttClient:
             "connected": self.connected,
             "host": self.host,
             "port": self.port,
+            "username": self.username or "<anonymous>",
             "messages": self.messages,
             "last_error": self.last_error,
             "last_message_at": self.last_message_at,
@@ -138,7 +139,17 @@ class MqttClient:
         if first >> 4 != CONNACK:
             raise RuntimeError("unexpected packet %d" % (first >> 4))
         if len(body) >= 2 and body[1] != 0:
-            raise RuntimeError("CONNACK refused code %d" % body[1])
+            reasons = {
+                1: "协议版本不支持",
+                2: "client id 被拒绝",
+                3: "broker 不可用",
+                4: "用户名或密码错误",
+                5: "未授权：用户名/密码不对，或 broker 禁止匿名（Mosquitto 默认如此）",
+            }
+            code = body[1]
+            raise RuntimeError(
+                "CONNACK refused code %d（%s）" % (code, reasons.get(code, "未知原因"))
+            )
 
         self._sock = sock
         self.connected = True
