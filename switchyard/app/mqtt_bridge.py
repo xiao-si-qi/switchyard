@@ -7,6 +7,8 @@ PINGREQ. No external dependencies, so the add-on image keeps building without pi
 import json
 import os
 import re
+
+import discovery
 import socket
 import struct
 import threading
@@ -322,19 +324,14 @@ class DeviceStore:
             dev["last_seen"] = int(time.time())
             self._save()
 
-    DEFAULT_CAPS = {
-        "screen": ["layout", "ota", "reboot", "brightness"],
-        "elink": ["ota", "reboot"],
-        "meter": ["ota", "reboot"],
-        "sensor": ["ota", "reboot"],
-    }
-
     def _caps(self, dev):
+        """能力以设备上报的 meta 为准；没上报才按 type 兜底。"""
         meta = dev.get("meta") or {}
         caps = meta.get("caps")
         if isinstance(caps, list) and caps:
             return caps
-        return self.DEFAULT_CAPS.get(dev.get("type") or "", ["ota", "reboot"])
+        dev_type = meta.get("type") or dev.get("type") or "unknown"
+        return discovery.DEFAULT_CAPS.get(dev_type, discovery.DEFAULT_CAPS["unknown"])
 
     def snapshot(self):
         now = int(time.time())

@@ -67,7 +67,7 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 # 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
-FALLBACK_VERSION = "0.9.0"
+FALLBACK_VERSION = "0.9.1"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
@@ -575,7 +575,11 @@ def on_mqtt_message(topic, payload):
             return
         key = (dev.get("type"), dev.get("fw"), tuple(dev.get("caps") or []))
         if DISCOVERY_SEEN.get(device_id) != key:
-            n = discovery.publish_device(MQTT, device_id, dev["raw"], dev.get("caps"))
+            state = dict(dev["raw"])
+            meta = dev.get("meta") or {}
+            state["name"] = meta.get("name") or device_id
+            state["model"] = meta.get("model")
+            n = discovery.publish_device(MQTT, device_id, state, dev.get("caps"))
             if n:
                 DISCOVERY_SEEN[device_id] = key
                 print("discovery: %d entities for %s" % (n, device_id), flush=True)
@@ -598,7 +602,11 @@ def discovery_loop():
         if MQTT is None or not MQTT.connected:
             continue
         for dev in STORE.snapshot():
-            discovery.publish_device(MQTT, dev["id"], dev["raw"], dev.get("caps"))
+            state = dict(dev["raw"])
+            meta = dev.get("meta") or {}
+            state["name"] = meta.get("name") or dev["id"]
+            state["model"] = meta.get("model")
+            discovery.publish_device(MQTT, dev["id"], state, dev.get("caps"))
 
 
 def start_mqtt():

@@ -93,7 +93,26 @@ switchyard/<id>/cfg      payload = 布局 JSON（和 /local/switchyard/layout.js
 
 设备的优先级：`NVS 里的 cfg` → `HTTP /local/switchyard/layout.json` → 自动发现兜底。
 
-## 6. meta（能力声明，可选）
+## 6. meta（能力声明）
+
+设备上线时发一次 retained 的 `switchyard/<id>/meta`。**插件只按这里的 caps 生成
+实体和按钮**，不猜 state 字段。词表：
+
+| cap | 实体 / 动作 |
+|---|---|
+| `fw` `rssi` `uptime` `online` | sensor / binary_sensor（通用诊断）|
+| `battery` `battery_v` | 电量 %、电池电压 V |
+| `water` | 累计水量 m³ |
+| `climate` | 温度 + 湿度 |
+| `leak` `comm_fault` | 漏水 / 通信故障 |
+| `valve` | 阀门 switch，命令 `{"cmd":"valve","open":true}` |
+| `reboot` `ota` | 重启 / 检查更新按钮 |
+| `brightness` | 亮度 number |
+| `layout` | 设备页布局编辑器开关 |
+
+未声明的 cap 不生成实体；设备声明了但 state 没给值，实体显示 `unknown`（说明设备
+实现和声明不一致，属于设备侧 bug）。
+
 
 ```json
 {

@@ -79,15 +79,27 @@ HA 的 Mosquitto 加载项用 Home Assistant 的账号做认证（不是 anonymo
 
 旁边就是「下发 OTA」，两步就能完成升级。
 
-### 不同设备类型的实体（0.9.0）
+### 实体完全由 caps 决定（0.9.x）
 
-除通用实体外，`state` 里出现对应字段就生成对应实体（所以同一套协议能覆盖圆屏、水表、墨水屏）：
+插件**只看设备声明的能力**，不看 `state` 里碰巧有什么字段——设备换字段名、少报一次
+值，都不会让 HA 里的实体飘。词表：
 
-| state 字段 | 实体 |
+| cap | 生成的实体 |
 |---|---|
-| `water` / `temp` / `hum` / `battery_v` | `sensor`（m³ / °C / % / V）|
-| `leak` / `comm_fault` | `binary_sensor`（moisture / problem）|
-| `valve` + caps 含 `valve` | `switch.阀门`（payload `{"cmd":"valve","open":true}`）|
+| `fw` `rssi` `uptime` | sensor：固件 / 信号 / 运行时长 |
+| `battery` `battery_v` | sensor：电量 % / 电池电压 V |
+| `water` | sensor：累计水量（m³）|
+| `climate` | sensor：温度 + 湿度 |
+| `leak` `comm_fault` | binary_sensor：漏水 / 通信故障 |
+| `online` | binary_sensor：在线（connectivity）|
+| `valve` | switch：阀门（`{"cmd":"valve","open":true/false}`）|
+| `reboot` | button：重启 |
+| `ota` | button：检查更新 |
+| `brightness` | number：亮度 |
+| `layout` | 不是实体，是设备页「布局」面板的开关 |
+
+设备没上报 `meta` 时按 `type` 用默认能力（`screen` / `meter` / `elink` / `unknown`）。
+设备改过 caps 后，插件会把不再声明的实体发布成空 retained 清掉，不留孤儿。
 
 ### 设备能力声明（caps，0.7.0）
 
