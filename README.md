@@ -5,6 +5,15 @@
 > switchyard：铁路编组站。列车的调车、编组、发车都在这里完成；
 > 这个项目做的是同一件事——把家里各种 ESP32 设备统一登记、下发任务、更新固件。
 
+## 文档导航
+
+| 想做什么 | 看这里 |
+|---|---|
+| 安装 / 配置加载项 | [switchyard/README.md](switchyard/README.md) |
+| 设备协议（主题、JSON、seq、OTA 流程） | [docs/PROTOCOL.md](docs/PROTOCOL.md) |
+| 被管理的设备固件（圆屏） | [orbis-panel](https://github.com/xiao-si-qi/orbis-panel) |
+| 从旧插件迁移 | [从 Orbis Panel Editor 迁移](#从-orbis-panel-editor-迁移) |
+
 ## 它解决什么问题
 
 家里逐渐会有很多自制的 ESP32 设备：圆屏控制面板、墨水屏、水表、温湿度计……
