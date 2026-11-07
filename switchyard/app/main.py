@@ -2,10 +2,11 @@
 
 Standard library only: no pip, no Flask, no requests. Device manager for ESP32 panels:
 layout editor, firmware upload and writes it into Home Assistant's www folder, so
-the panel can fetch it from `<ha>/local/orbis/layout.json`.
+layouts are pushed over MQTT (`orbis/<id>/cfg`); firmware lives under
+`<www_dir>/<device_id>/firmware.bin`.
 
 Environment:
-    LAYOUT_PATH       where to write the layout (default /config/www/orbis/layout.json)
+    WWW_DIR           publish root (default /config/www/switchyard)
     SUPERVISOR_TOKEN  injected by the Supervisor, used to list entities
 """
 

@@ -109,7 +109,7 @@ Switchyard 用它决定显示哪些按钮（有没有 OTA、能否下发布局�
 ```
 Switchyard                     设备
     │ 上传 firmware.bin+json      │
-    │（/config/www/orbis/fw/…）   │
+    │（/config/www/switchyard/<id>/firmware.bin）│
     │ ── cmd:ota(url,sha256) ───▶ │ 下载 → 校验 → 写非活动槽
     │ ◀── event: ota_progress ─── │ （可选，设备支持就发）
     │ ◀── event: ota_done ─────── │ 切槽重启

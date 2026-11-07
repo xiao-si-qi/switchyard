@@ -67,14 +67,6 @@ Switchyard 提供一层统一的"设备管理"：
 - [ ] **P3** 配置下发：屏幕布局 / 采样周期 / 亮度，统一 push
 - [ ] 设备注册表持久化、OTA 进度回传（`event: ota_progress`）
 
-## 兼容性
-
-
-现有的 Orbis Panel 固件（[orbis-panel](https://github.com/xiao-si-qi/orbis-panel)）默认从
-`<ha>/local/orbis/layout.json` 和 `<ha>/local/orbis/firmware.json` 取文件，
-Switchyard 的默认发布目录就是这个，所以两个加载项可以并存；
-以后统一迁到 `switchyard/` 路径时，会保留旧路径兼容。
-
 ## 许可
 
 MIT，见 [LICENSE](LICENSE)。

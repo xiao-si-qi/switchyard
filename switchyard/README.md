@@ -1,11 +1,12 @@
 # Switchyard（Home Assistant 加载项）
 
-ESP32 设备的统一上位机。当前版本（0.1.0）包含两块能力：
+ESP32 设备的统一上位机。当前版本（0.4.2）包含：
 
-1. **屏幕布局下发**：编辑 JSON 布局（页面 / 卡片 / 实体），发布到
-   `/config/www/orbis/layout.json`，屏幕重启后读取；
-2. **固件 OTA 分发**：上传 `orbis.bin` + 版本号，写 `firmware.bin` / `firmware.json`，
-   设备在 System 页点「检查更新」即可下载升级。
+1. **设备台账**：设备往 `orbis/<id>/state` 发一次就自动注册，显示在线/固件/信号/电量；
+2. **按设备下发布局**：编辑页面与卡片，**retained 发布到 `orbis/<id>/cfg`**，
+   设备立即应用并存 NVS（不再写 `www` 静态文件）；
+3. **按设备固件 OTA**：上传 `orbis.bin` 到 `www_dir/<device_id>/firmware.bin`，
+   设备收到 `cmd:ota` 后自己下载、写非活动槽、重启。
 
 **设备台账（P1）已可用**：订阅 `orbis/+/state|availability|event`，显示在线状态、固件版本、信号/电量、最后上报时间（协议见 [../docs/PROTOCOL.md](../docs/PROTOCOL.md)）。
 

@@ -71,7 +71,7 @@ POST /api/devices/<id>/layout
 
 ## 已删除的东西
 
-- ❌ HTTP `GET /local/orbis/layout.json`（布局不再走静态文件）
+- ❌ 把布局 JSON 放进 `www` 静态目录（改走 MQTT `cfg`）
 - ❌ 自动挑选实体（灯/场景/传感器的兜底）
 - ❌ `APP_ENTITY_*` / `APP_SENSOR_*` 的 menuconfig 槽位
 
