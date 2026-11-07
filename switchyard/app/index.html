@@ -188,6 +188,7 @@ let page = 0;
 let devices = [];
 let currentDevice = null;
 let currentCaps = [];
+let forgetArmed = false;
 let cfgDevice = "";
 let pollTimer = null;
 
@@ -340,6 +341,12 @@ function renderDevices() {
 }
 
 function renderDetail() {
+  // 详情页是复用的，先清掉上一台设备残留的提示/待确认状态
+  if ($("d-action-status")) $("d-action-status").textContent = "";
+  if ($("d-forget")) {
+    forgetArmed = false;
+    $("d-forget").textContent = "删除设备";
+  }
   const d = devices.find((x) => x.id === currentDevice);
   $("d-title").textContent = currentDevice || "(未知设备)";
   const st = $("d-status");
@@ -416,7 +423,6 @@ $("cfg-device") && ($("cfg-device").onchange = () => {
   loadLayout();
 });
 
-let forgetArmed = false;
 $("d-forget").onclick = async () => {
   if (!currentDevice) return;
   const btn = $("d-forget");
@@ -454,7 +460,10 @@ $("d-layout").onclick = () => {
   location.hash = "#/settings";
 };
 
-$("btn-back").onclick = () => { location.hash = "#/"; };
+$("btn-back").onclick = () => {
+  if ($("d-action-status")) $("d-action-status").textContent = "";
+  location.hash = "#/";
+};
 $("d-reboot").onclick = () => sendCmd({ cmd: "reboot" });
 $("d-set-bright").onclick = () => sendCmd({ cmd: "set", key: "brightness", value: Number($("d-bright").value) });
 $("d-ota").onclick = async () => {
