@@ -73,7 +73,15 @@ SELF_VERSION_CACHE = {"at": 0, "latest": "", "error": ""}
 
 
 def addon_version():
-    """读镜像里自带的 config.yaml 版本号。"""
+    """当前安装的版本：先问 Supervisor，再退到镜像里的 config.yaml。"""
+    try:
+        info = supervisor_get("/addons/self/info")
+        data = info.get("data") or info
+        version = data.get("version")
+        if version:
+            return version
+    except Exception as exc:  # noqa: BLE001
+        print("version: supervisor lookup failed: %s" % exc, flush=True)
     for path in ("/app/addon_config.yaml", os.path.join(APP_DIR, "..", "config.yaml")):
         try:
             with open(path, "r", encoding="utf-8") as fh:

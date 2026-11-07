@@ -416,16 +416,36 @@ $("cfg-device") && ($("cfg-device").onchange = () => {
   loadLayout();
 });
 
+let forgetArmed = false;
 $("d-forget").onclick = async () => {
   if (!currentDevice) return;
-  if (!confirm("从列表里删除 " + currentDevice + "？\n（同时清掉 broker 上它的 retained 状态）")) return;
-  const resp = await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/forget", { method: "POST" });
-  const data = await resp.json();
-  if (data.ok) {
-    location.hash = "#/";
-    setTimeout(() => loadDevices(), 300);
-  } else {
-    alert("删除失败: " + data.error);
+  const btn = $("d-forget");
+  const st = $("d-action-status");
+  if (!forgetArmed) {
+    forgetArmed = true;
+    btn.textContent = "再点一次确认删除";
+    btn.classList.add("danger");
+    st.textContent = "会同时清掉 broker 上它的 retained 状态和 HA 里的实体";
+    setTimeout(() => {
+      forgetArmed = false;
+      btn.textContent = "删除设备";
+    }, 5000);
+    return;
+  }
+  forgetArmed = false;
+  btn.textContent = "删除设备";
+  st.textContent = "删除中…";
+  try {
+    const resp = await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/forget", { method: "POST" });
+    const data = await resp.json();
+    if (data.ok) {
+      st.textContent = "已删除 " + data.forgot + "（清理: " + (data.retained_cleared || []).join(", ") + "）";
+      setTimeout(() => { location.hash = "#/"; loadDevices(); }, 600);
+    } else {
+      st.textContent = "删除失败: " + (data.error || resp.status);
+    }
+  } catch (e) {
+    st.textContent = "删除失败: " + e;
   }
 };
 
@@ -504,7 +524,7 @@ function renderLayout() {
   add.className = "tab";
   add.textContent = "+ 新页";
   add.onclick = () => {
-    if (layout.pages.length >= 6) { alert("最多 6 页"); return; }
+    if (layout.pages.length >= 6) { setLayoutStatus("最多 6 页", "err"); return; }
     layout.pages.push({ name: "Page " + (layout.pages.length + 1), tiles: [] });
     page = layout.pages.length - 1;
     renderLayout();
@@ -565,7 +585,7 @@ async function searchEntities() {
     el.querySelector(".s").textContent = e.state + (e.unit ? " " + e.unit : "");
     el.onclick = () => {
       const cur = layout.pages[page];
-      if (cur.tiles.length >= 4) { alert("这页已经满了（4 个）"); return; }
+      if (cur.tiles.length >= 4) { setLayoutStatus("这页已经满了（4 个）", "err"); return; }
       cur.tiles.push({ entity: e.entity_id, name: e.name, label: e.name, type: typeOf(e.entity_id) });
       renderLayout();
     };
@@ -671,8 +691,8 @@ $("d-fw-upload").onclick = async () => {
   const input = $("d-fw-file");
   const version = $("d-fw-version").value.trim();
   const el = $("d-fw-info");
-  if (!input.files || !input.files.length) { alert("先选一个 .bin 文件"); return; }
-  if (!version) { alert("填一个版本号，例如 0.2.0"); return; }
+  if (!input.files || !input.files.length) { el.textContent = "先选一个 .bin 文件"; return; }
+  if (!version) { el.textContent = "填一个版本号，例如 0.2.0"; return; }
   const file = input.files[0];
   el.textContent = "上传中… " + Math.round(file.size / 1024) + " KB";
   try {
