@@ -141,11 +141,11 @@ device_id 是 MQTT 主题里那一段（`switchyard/<device_id>/...`），改它
 
 MIT，见 [../LICENSE](../LICENSE)。
 
-## 主题空间与安全
+## 主题空间
 
 - 本插件只用 `switchyard/#` 和 `homeassistant/#`（后者发 discovery），
-  不订阅 `#`、不碰 `ha/`、`gas_meter/` 等其它命名空间；
+  不订阅 `#`、不碰 `ha/`、`gas_meter/`、`water_meter/` 等其它命名空间；
 - 设备 ID 限定 `a-z 0-9 - _`（≤31 字符）：固件保存时校验，插件收到非法 ID 直接忽略，
   防止主题注入和 `../` 路径穿越；
-- broker 若暴露在公网，强烈建议按 [../docs/ACL.md](../docs/ACL.md) 给每台设备独立账号 +
-  `pattern readwrite switchyard/%u/#`，否则一个账号泄漏就能冒充所有设备。
+- broker 目前是自家设备共用账号，**没有加 ACL**（设备都在自己手里，先图省事）。
+  如果以后要防"设备互相冒充"，再按"每台设备一个账号 + `pattern readwrite switchyard/%u/#`"收紧。
