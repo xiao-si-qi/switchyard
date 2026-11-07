@@ -121,6 +121,12 @@
         <span class="status" id="d-fw-info">读取中…</span>
       </div>
       <div class="row" style="margin-top:10px">
+        <span class="status" id="d-ver-device">设备固件: -</span>
+        <span class="status" id="d-ver-upload">已上传: -</span>
+        <span class="status" id="d-ver-state"></span>
+        <button id="d-check">检查更新</button>
+      </div>
+      <div class="row" style="margin-top:10px">
         <input type="file" id="d-fw-file" accept=".bin" style="font-size:12px">
         <input type="text" id="d-fw-version" placeholder="版本号，如 0.2.0" style="width:150px">
         <button class="primary" id="d-fw-upload">上传到本设备</button>
@@ -318,6 +324,7 @@ function renderDetail() {
     kv.appendChild(kd);
     kv.appendChild(vd);
   });
+  renderUpdateState();
   currentCaps = d.caps || [];
   const has = (c) => currentCaps.indexOf(c) >= 0;
   $("d-reboot").classList.toggle("hidden", !has("reboot"));
@@ -559,6 +566,30 @@ $("q").addEventListener("input", () => {
   searchTimer = setTimeout(searchEntities, 300);
 });
 
+let uploadedFw = null;
+
+function renderUpdateState() {
+  const d = devices.find((x) => x.id === currentDevice);
+  const devFw = d && d.fw;
+  const upFw = uploadedFw && uploadedFw.version;
+  $("d-ver-device").textContent = "设备固件: " + (devFw || "-");
+  $("d-ver-upload").textContent = "已上传: " + (upFw || "-");
+  const st = $("d-ver-state");
+  if (!upFw) {
+    st.textContent = "未上传固件";
+    st.className = "status";
+  } else if (!devFw) {
+    st.textContent = "设备未上报版本";
+    st.className = "status err";
+  } else if (devFw === upFw) {
+    st.textContent = "已是最新";
+    st.className = "status ok";
+  } else {
+    st.textContent = "可升级 → " + upFw;
+    st.className = "status err";
+  }
+}
+
 async function loadDeviceFirmware(deviceId) {
   const el = $("d-fw-info");
   if (!el) return;
@@ -568,11 +599,24 @@ async function loadDeviceFirmware(deviceId) {
     if (!data.ok) { el.textContent = "读取失败"; return; }
     if (!data.firmware) { el.textContent = "这台设备还没上传固件"; return; }
     const fw = data.firmware;
+    uploadedFw = fw;
     el.textContent = "已存 v" + fw.version + " · " + Math.round(fw.size / 1024) + " KB";
+    renderUpdateState();
   } catch (e) {
     el.textContent = "读取失败: " + e;
   }
 }
+
+$("d-check").onclick = async () => {
+  const st = $("d-ver-state");
+  st.textContent = "询问设备中…";
+  st.className = "status";
+  await sendCmd({ cmd: "state" });          // 让设备立刻上报 state/meta
+  await new Promise((r) => setTimeout(r, 1200));
+  await loadDevices(true);                   // 拉最新状态
+  await loadDeviceFirmware(currentDevice);
+  renderUpdateState();
+};
 
 $("d-fw-upload").onclick = async () => {
   if (!currentDevice) return;
@@ -589,9 +633,13 @@ $("d-fw-upload").onclick = async () => {
       { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file }
     );
     const data = await resp.json();
-    el.textContent = data.ok
-      ? "已存 v" + data.firmware.version + " · " + Math.round(data.firmware.size / 1024) + " KB"
-      : "失败: " + data.error;
+    if (data.ok) {
+      uploadedFw = data.firmware;
+      el.textContent = "已存 v" + data.firmware.version + " · " + Math.round(data.firmware.size / 1024) + " KB";
+      renderUpdateState();
+    } else {
+      el.textContent = "失败: " + data.error;
+    }
   } catch (e) {
     el.textContent = "失败: " + e;
   }

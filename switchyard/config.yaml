@@ -1,5 +1,5 @@
 name: Switchyard
-version: "0.7.0"
+version: "0.7.1"
 slug: switchyard
 description: ESP32 设备统一上位机：设备台账、屏幕布局下发、固件 OTA
 url: https://github.com/xiao-si-qi/switchyard

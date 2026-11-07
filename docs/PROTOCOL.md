@@ -64,6 +64,7 @@
 {"seq":12,"cmd":"ota","url":"https://ha.example.com/local/switchyard/fw/screen-0.2.0.bin","sha256":"..."}
 {"seq":13,"cmd":"layout","url":"https://ha.example.com/local/switchyard/layout/hall.json"}
 {"seq":14,"cmd":"reboot"}
+{"seq":16,"cmd":"state"}   // 立刻上报 state/meta
 {"seq":15,"cmd":"set","key":"brightness","value":60}
 ```
 
