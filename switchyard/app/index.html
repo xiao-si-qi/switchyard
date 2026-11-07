@@ -98,6 +98,7 @@
       <strong style="font-size:14px">操作</strong>
       <div class="actions">
         <button id="d-layout">编辑本设备布局</button>
+        <button id="d-forget" class="danger">删除设备</button>
         <button id="d-reboot">重启设备</button>
         <button id="d-ota" class="primary">下发 OTA</button>
         <span class="status" id="d-action-status"></span>
@@ -348,6 +349,19 @@ $("cfg-device") && ($("cfg-device").onchange = () => {
   populateDeviceSelect();
   loadLayout();
 });
+
+$("d-forget").onclick = async () => {
+  if (!currentDevice) return;
+  if (!confirm("从列表里删除 " + currentDevice + "？\n（同时清掉 broker 上它的 retained 状态）")) return;
+  const resp = await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/forget", { method: "POST" });
+  const data = await resp.json();
+  if (data.ok) {
+    location.hash = "#/";
+    setTimeout(() => loadDevices(), 300);
+  } else {
+    alert("删除失败: " + data.error);
+  }
+};
 
 $("d-layout").onclick = () => {
   cfgDevice = currentDevice || "";

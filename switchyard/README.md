@@ -49,6 +49,15 @@ HA 的 Mosquitto 加载项用 Home Assistant 的账号做认证（不是 anonymo
 - 支持 N 块同款屏各用各的布局（设备 id 由固件自动生成 `orbis-xxxx`）；
 - 设备详情页的「编辑本设备布局」会自动把目标切到那台设备。
 
+### 改设备名（device_id）
+
+device_id 是 MQTT 主题里那一段（`orbis/<device_id>/...`），改它等于换身份：
+
+1. 打开 `http://<设备IP>/` → 改「设备 ID」（小写、用 `-`，别用 `/`、空格、`+`、`#`）→ 保存，设备会重启；
+2. 新 id 会自动注册到列表；旧条目点 **删除设备**（会同时清掉 broker 上它的 retained 状态，
+   否则重启后又会"复活"）；
+3. 布局是按设备存的（`/data/layouts/<id>.json`），换 id 后要重新下发一次。
+
 ### 设备自动注册（不用手工添加）
 
 - 设备第一次往 `orbis/<id>/state`、`orbis/<id>/availability` 或 `orbis/<id>/event` 发消息，

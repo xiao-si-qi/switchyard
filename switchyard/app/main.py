@@ -266,7 +266,13 @@ class Handler(BaseHTTPRequestHandler):
         if "/api/devices/" in path and path.endswith("/forget"):
             device_id = path.split("/api/devices/", 1)[1].rsplit("/forget", 1)[0]
             STORE.forget(device_id)
-            self.send_json({"ok": True, "forgot": device_id})
+            cleared = []
+            if MQTT is not None and MQTT.connected:
+                # 清掉 broker 上该设备的 retained 消息，否则重启后又会"复活"
+                for suffix in ("state", "availability", "event", "cmd", "cfg"):
+                    if MQTT.publish("orbis/%s/%s" % (device_id, suffix), "", retain=True):
+                        cleared.append(suffix)
+            self.send_json({"ok": True, "forgot": device_id, "retained_cleared": cleared})
             return
         if "/api/devices/" in path and path.endswith("/cmd"):
             self.handle_device_cmd(path)
