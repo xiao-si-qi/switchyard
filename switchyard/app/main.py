@@ -67,7 +67,7 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 # 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
-FALLBACK_VERSION = "0.10.5"
+FALLBACK_VERSION = "0.10.6"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
@@ -597,7 +597,9 @@ def on_mqtt_message(topic, payload):
         dev = STORE.get_device(device_id)
         if dev is None:
             return
-        key = (dev.get("type"), dev.get("fw"), tuple(dev.get("caps") or []))
+        # 中文名也进 key：改名后要重新发布 discovery，否则 HA 里还是旧名字
+        key = (dev.get("type"), dev.get("fw"), tuple(dev.get("caps") or []),
+               (dev.get("meta") or {}).get("name"))
         if DISCOVERY_SEEN.get(device_id) != key:
             state = dict(dev["raw"])
             meta = dev.get("meta") or {}
