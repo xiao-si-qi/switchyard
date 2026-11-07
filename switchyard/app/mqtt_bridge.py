@@ -414,9 +414,19 @@ class DeviceStore:
             }
 
     def next_seq(self, device_id):
+        """命令序号：用**当前时间**做基准。
+
+        设备会把最后执行的 seq 存进 NVS 并丢弃更小的值；如果插件从 1 开始自增，
+        遇到手工调试用过的大 seq（或设备换过插件/重置过数据）就会一直被拒。
+        用 epoch 秒既单调递增，又天然大于任何历史小值。
+        """
         with self._lock:
-            self._seq[device_id] = self._seq.get(device_id, 0) + 1
-            return self._seq[device_id]
+            now = int(time.time())
+            cur = self._seq.get(device_id, 0)
+            nxt = now if now > cur else cur + 1
+            self._seq[device_id] = nxt
+            self._save()
+            return nxt
 
     def device_count(self):
         with self._lock:
