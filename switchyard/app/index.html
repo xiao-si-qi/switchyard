@@ -395,6 +395,12 @@ function renderDevices() {
 function renderDetail() {
   // 详情页是复用的，先清掉上一台设备残留的提示/待确认状态
   if ($("d-action-status")) $("d-action-status").textContent = "";
+  // 这些面板是复用的：切设备必须清掉上一台的输出，否则会串台
+  if ($("d-log-text")) { $("d-log-text").textContent = ""; $("d-log-text").classList.add("hidden"); }
+  if ($("d-log-status")) { $("d-log-status").textContent = ""; $("d-log-status").className = "status"; }
+  if ($("d-bg-status")) { $("d-bg-status").textContent = ""; $("d-bg-status").className = "status"; }
+  if ($("d-bg-list")) $("d-bg-list").innerHTML = "";
+  if ($("d-fw-info")) $("d-fw-info").textContent = "读取中…";
   if ($("d-forget")) {
     forgetArmed = false;
     $("d-forget").textContent = "删除设备";
@@ -660,6 +666,12 @@ $("btn-cfg-read").onclick = async () => {
 
 $("btn-back").onclick = () => {
   if ($("d-action-status")) $("d-action-status").textContent = "";
+  // 这些面板是复用的：切设备必须清掉上一台的输出，否则会串台
+  if ($("d-log-text")) { $("d-log-text").textContent = ""; $("d-log-text").classList.add("hidden"); }
+  if ($("d-log-status")) { $("d-log-status").textContent = ""; $("d-log-status").className = "status"; }
+  if ($("d-bg-status")) { $("d-bg-status").textContent = ""; $("d-bg-status").className = "status"; }
+  if ($("d-bg-list")) $("d-bg-list").innerHTML = "";
+  if ($("d-fw-info")) $("d-fw-info").textContent = "读取中…";
   location.hash = "#/";
 };
 $("d-reboot").onclick = () => sendCmd({ cmd: "reboot" });
@@ -715,6 +727,12 @@ async function loadLayout() {
     : data.source === "file" ? "来源: 本地副本"
     : "设备还没收到过布局";
   setLayoutStatus("已读取 " + cfgDevice + " 的布局", "ok");
+
+  /* 背景轮播参数以布局里的 bg 为准 */
+  if (layout && layout.bg) {
+    if ($("d-bg-interval")) $("d-bg-interval").value = layout.bg.interval || 60;
+    if ($("d-bg-dim")) $("d-bg-dim").value = (layout.bg.dim === undefined ? 35 : layout.bg.dim);
+  }
 }
 
 function renderLayout() {
