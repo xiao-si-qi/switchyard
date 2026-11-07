@@ -81,7 +81,7 @@ SPECS = {
                "payload": {"cmd": "reboot"}, "diagnostic": False},
     "ota": {"kind": "button", "name": "检查更新", "icon": "mdi:cloud-download",
             "payload": {"cmd": "ota"}, "diagnostic": False},
-    "brightness": {"kind": "number", "name": "亮度", "unit": "%",
+    "brightness": {"kind": "number", "name": "亮度", "unit": "%", "tpl_field": "brightness",
                    "icon": "mdi:brightness-6", "min": 10, "max": 100, "step": 5,
                    "command_template": '{"cmd":"set","key":"brightness","value":{{ value }}}'},
     "online": {"kind": "binary_sensor", "name": "在线", "device_class": "connectivity",
@@ -181,6 +181,8 @@ def _configs(device_id, state, caps):
             })
         elif kind == "number":
             cfg.update({
+                "state_topic": state_topic,
+                "value_template": "{{ value_json.%s }}" % spec.get("tpl_field", "value"),
                 "command_topic": cmd_topic,
                 "command_template": spec["command_template"],
                 "min": spec["min"],
