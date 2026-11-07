@@ -56,6 +56,95 @@ def fw_paths(device_id):
     folder = os.path.join(WWW_DIR, device_id)
     return folder, os.path.join(folder, "firmware.bin"), os.path.join(folder, "firmware.json")
 
+SLUG = "switchyard"
+REPO = "xiao-si-qi/switchyard"
+RAW_CONFIG_URL = "https://raw.githubusercontent.com/%s/main/switchyard/config.yaml" % REPO
+SELF_VERSION_CACHE = {"at": 0, "latest": "", "error": ""}
+
+
+def addon_version():
+    """读镜像里自带的 config.yaml 版本号。"""
+    for path in ("/app/addon_config.yaml", os.path.join(APP_DIR, "..", "config.yaml")):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    if line.startswith("version:"):
+                        return line.split(":", 1)[1].strip().strip('"').strip("'")
+        except OSError:
+            continue
+    return "?"
+
+
+def version_tuple(v):
+    try:
+        return tuple(int(x) for x in v.split("."))
+    except ValueError:
+        return (0,)
+
+
+SUPERVISOR = "http://supervisor"
+
+
+def supervisor_get(path, timeout=10):
+    req = urllib.request.Request(SUPERVISOR + path, headers={"Authorization": "Bearer " + TOKEN})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.load(resp)
+
+
+def supervisor_store_version():
+    """从 Supervisor 的加载项商店读我们自己这个 add-on 的版本。"""
+    errors = []
+    for path in ("/store/addons/%s/info" % SLUG, "/addons/%s/info" % SLUG):
+        try:
+            data = supervisor_get(path)
+            version = data.get("version") or (data.get("addon") or {}).get("version")
+            if version:
+                return version, ""
+            errors.append("%s: no version field" % path)
+        except Exception as exc:  # noqa: BLE001
+            errors.append("%s: %s" % (path, exc))
+    return "", " | ".join(errors)
+
+
+def reload_store():
+    """让 Supervisor 重新拉取加载项仓库（HA 商店的"检查更新"其实就干这个）。"""
+    try:
+        req = urllib.request.Request(SUPERVISOR + "/store/reload", method="POST",
+                                     headers={"Authorization": "Bearer " + TOKEN})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return True, resp.status
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+
+
+def latest_addon_version(max_age=600):
+    """从 GitHub 读最新版本（缓存 10 分钟）。"""
+    now = time.time()
+    if SELF_VERSION_CACHE["latest"] and now - SELF_VERSION_CACHE["at"] < max_age:
+        return SELF_VERSION_CACHE["latest"], SELF_VERSION_CACHE["error"]
+    version, serr = supervisor_store_version()
+    if version:
+        SELF_VERSION_CACHE.update({"at": now, "latest": version, "error": ""})
+        return version, ""
+
+    try:
+        req = urllib.request.Request(RAW_CONFIG_URL, headers={"User-Agent": "switchyard"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            text = resp.read().decode("utf-8", "replace")
+        latest = ""
+        for line in text.splitlines():
+            if line.startswith("version:"):
+                latest = line.split(":", 1)[1].strip().strip('"').strip("'")
+                break
+        if not latest:
+            raise RuntimeError("version not found in remote config.yaml")
+        SELF_VERSION_CACHE.update({"at": now, "latest": latest, "error": ""})
+        return latest, ""
+    except Exception as exc:  # noqa: BLE001
+        SELF_VERSION_CACHE.update({"at": now, "latest": "", "error": "%s; github: %s" % (serr, exc)})
+        return "", "%s; github: %s" % (serr, exc)
+
+
 DEFAULT_LAYOUT = {
     "version": 1,
     "title": "Home",
@@ -192,6 +281,20 @@ class Handler(BaseHTTPRequestHandler):
                     "devices": STORE.device_count(),
                 }
             )
+        elif path.endswith("/api/self_update"):
+            current = addon_version()
+            latest, err = latest_addon_version()
+            self.send_json(
+                {
+                    "ok": bool(latest),
+                    "current": current,
+                    "latest": latest,
+                    "update_available": bool(latest) and version_tuple(latest) > version_tuple(current),
+                    "error": err,
+                    "repo": REPO,
+                    "store_hint": "HA → 设置 → 加载项商店 → ⋮ → 检查更新（或按住 Shift 点「检查更新」强制刷新商店缓存）",
+                }
+            )
         elif "/api/devices/" in path and path.endswith("/firmware"):
             device_id = path.split("/api/devices/", 1)[1].rsplit("/firmware", 1)[0]
             _, bin_path, _ = fw_paths(device_id)
@@ -282,6 +385,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if "/api/devices/" in path and path.endswith("/cmd"):
             self.handle_device_cmd(path)
+            return
+        if path.endswith("/api/store_reload"):
+            ok, info = reload_store()
+            self.send_json({"ok": ok, "info": str(info)}, 200 if ok else 502)
             return
         if "/api/devices/" in path and path.endswith("/firmware"):
             self.handle_firmware_upload(path)

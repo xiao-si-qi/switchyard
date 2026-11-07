@@ -3,6 +3,7 @@
 FROM python:3.12-alpine
 
 COPY app /app
+COPY config.yaml /app/addon_config.yaml
 WORKDIR /app
 
 EXPOSE 8099
