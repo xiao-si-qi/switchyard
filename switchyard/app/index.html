@@ -257,6 +257,7 @@ let devices = [];
 let currentDevice = null;
 let currentCaps = [];
 let forgetArmed = false;
+let lastRenderedDevice = null;
 let cfgDevice = "";
 let pollTimer = null;
 
@@ -395,12 +396,17 @@ function renderDevices() {
 function renderDetail() {
   // 详情页是复用的，先清掉上一台设备残留的提示/待确认状态
   if ($("d-action-status")) $("d-action-status").textContent = "";
-  // 这些面板是复用的：切设备必须清掉上一台的输出，否则会串台
-  if ($("d-log-text")) { $("d-log-text").textContent = ""; $("d-log-text").classList.add("hidden"); }
-  if ($("d-log-status")) { $("d-log-status").textContent = ""; $("d-log-status").className = "status"; }
-  if ($("d-bg-status")) { $("d-bg-status").textContent = ""; $("d-bg-status").className = "status"; }
-  if ($("d-bg-list")) $("d-bg-list").innerHTML = "";
-  if ($("d-fw-info")) $("d-fw-info").textContent = "读取中…";
+  // 只有在**切换设备**时才清空复用面板；同一台设备的 5 秒轮询不能清，
+  // 否则刚抓到的日志/背景列表会被下一次轮询抹掉。
+  const switchedDevice = lastRenderedDevice !== currentDevice;
+  lastRenderedDevice = currentDevice;
+  if (switchedDevice) {
+    if ($("d-log-text")) { $("d-log-text").textContent = ""; $("d-log-text").classList.add("hidden"); }
+    if ($("d-log-status")) { $("d-log-status").textContent = ""; $("d-log-status").className = "status"; }
+    if ($("d-bg-status")) { $("d-bg-status").textContent = ""; $("d-bg-status").className = "status"; }
+    if ($("d-bg-list")) $("d-bg-list").innerHTML = "";
+    if ($("d-fw-info")) $("d-fw-info").textContent = "读取中…";
+  }
   if ($("d-forget")) {
     forgetArmed = false;
     $("d-forget").textContent = "删除设备";
@@ -455,7 +461,7 @@ function renderDetail() {
   $("d-entities-panel").classList.toggle("hidden", !canLayout);
   $("d-log-panel").classList.toggle("hidden", !has("log"));
   $("d-bg-panel").classList.toggle("hidden", !has("background"));
-  if (has("background")) loadBackground();
+  if (has("background") && switchedDevice) loadBackground();
   if (canLayout) {
     searchEntities();
   }
@@ -666,12 +672,17 @@ $("btn-cfg-read").onclick = async () => {
 
 $("btn-back").onclick = () => {
   if ($("d-action-status")) $("d-action-status").textContent = "";
-  // 这些面板是复用的：切设备必须清掉上一台的输出，否则会串台
-  if ($("d-log-text")) { $("d-log-text").textContent = ""; $("d-log-text").classList.add("hidden"); }
-  if ($("d-log-status")) { $("d-log-status").textContent = ""; $("d-log-status").className = "status"; }
-  if ($("d-bg-status")) { $("d-bg-status").textContent = ""; $("d-bg-status").className = "status"; }
-  if ($("d-bg-list")) $("d-bg-list").innerHTML = "";
-  if ($("d-fw-info")) $("d-fw-info").textContent = "读取中…";
+  // 只有在**切换设备**时才清空复用面板；同一台设备的 5 秒轮询不能清，
+  // 否则刚抓到的日志/背景列表会被下一次轮询抹掉。
+  const switchedDevice = lastRenderedDevice !== currentDevice;
+  lastRenderedDevice = currentDevice;
+  if (switchedDevice) {
+    if ($("d-log-text")) { $("d-log-text").textContent = ""; $("d-log-text").classList.add("hidden"); }
+    if ($("d-log-status")) { $("d-log-status").textContent = ""; $("d-log-status").className = "status"; }
+    if ($("d-bg-status")) { $("d-bg-status").textContent = ""; $("d-bg-status").className = "status"; }
+    if ($("d-bg-list")) $("d-bg-list").innerHTML = "";
+    if ($("d-fw-info")) $("d-fw-info").textContent = "读取中…";
+  }
   location.hash = "#/";
 };
 $("d-reboot").onclick = () => sendCmd({ cmd: "reboot" });
