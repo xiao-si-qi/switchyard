@@ -67,7 +67,7 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 # 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
-FALLBACK_VERSION = "0.7.7"
+FALLBACK_VERSION = "0.7.8"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
@@ -391,14 +391,32 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "invalid device id"}, 400)
                 return
             lp = os.path.join(LAYOUTS_DIR, device_id + ".json")
-            layout = None
-            if os.path.exists(lp):
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            refresh = (query.get("refresh") or ["0"])[0] not in ("0", "", "false")
+
+            if refresh:
+                # 让设备把 NVS 里的布局回发到 cfg 主题，等最多 2 秒
+                send_device_cmd(device_id, {"cmd": "get", "key": "layout"})
+                for _ in range(20):
+                    if STORE.device_cfg(device_id):
+                        break
+                    time.sleep(0.1)
+
+            layout, source = None, "none"
+            raw_cfg = STORE.device_cfg(device_id)
+            if raw_cfg:
                 try:
-                    with open(lp, "r", encoding="utf-8") as fh:
-                        layout = json.load(fh)
+                    layout, source = json.loads(raw_cfg), "device"
                 except Exception:  # noqa: BLE001
                     layout = None
-            self.send_json({"ok": True, "device": device_id, "layout": layout, "path": lp})
+            if layout is None and os.path.exists(lp):
+                try:
+                    with open(lp, "r", encoding="utf-8") as fh:
+                        layout, source = json.load(fh), "file"
+                except Exception:  # noqa: BLE001
+                    layout = None
+            self.send_json({"ok": True, "device": device_id, "layout": layout,
+                            "source": source, "path": lp})
         elif path.endswith("/api/devices"):
             self.send_json(
                 {
@@ -628,6 +646,16 @@ def on_mqtt_message(topic, payload):
                 print("discovery: %d entities for %s" % (n, device_id), flush=True)
 
 
+def send_device_cmd(device_id, cmd):
+    """给设备发一条 cmd（自动带 seq 去重），返回是否发出。"""
+    if MQTT is None or not MQTT.connected:
+        return False
+    payload = dict(cmd)
+    payload["seq"] = STORE.next_seq(device_id)
+    topic = "switchyard/%s/cmd" % device_id
+    return MQTT.publish(topic, json.dumps(payload, ensure_ascii=False), retain=True)
+
+
 def discovery_loop():
     """每 5 分钟补发一次（broker 没开持久化时，重启后实体配置会丢）。"""
     while True:
@@ -647,7 +675,8 @@ def start_mqtt():
     global MQTT
     MQTT = mqtt_bridge.MqttClient(host, port, user, password, client_id="switchyard")
     MQTT.set_on_message(on_mqtt_message)
-    MQTT.start(["switchyard/+/state", "switchyard/+/availability", "switchyard/+/event"])
+    MQTT.start(["switchyard/+/state", "switchyard/+/availability", "switchyard/+/event",
+                "switchyard/+/cfg"])
     threading.Thread(target=discovery_loop, daemon=True).start()
     print("mqtt: connecting to %s:%s as %s" % (host, port, user or "<anonymous>"), flush=True)
 

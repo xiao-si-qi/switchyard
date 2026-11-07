@@ -70,7 +70,6 @@
   <span class="status" id="self-version">v?</span>
   <button id="btn-self-check" title="从 GitHub / Supervisor 读最新版本">检查更新</button>
   <span class="spacer" style="flex:1"></span>
-  <button id="btn-settings">布局 / 固件</button>
   <button id="btn-refresh">刷新</button>
 </header>
 
@@ -112,7 +111,7 @@
         <button id="d-set-bright">发送</button>
       </div>
       <p class="hint">
-        下发 OTA 用的是「布局 / 固件」页上传的固件（版本号 + 公开地址）。设备收到
+        下发 OTA 用的是本页上传的固件（版本号 + 公开地址）。设备收到
         <code>cmd:ota</code> 后自己下载、写另一个槽、重启；断电不影响当前固件。
       </p>
     </div>
@@ -139,29 +138,24 @@
       </p>
     </div>
 
-    <div class="panel">
-      <strong style="font-size:14px">原始 state</strong>
-      <pre id="d-raw" style="font-size:12px;color:#8b93a1;white-space:pre-wrap;word-break:break-all;margin:8px 0 0"></pre>
-    </div>
-  </section>
-
-  <section id="view-settings" class="hidden">
-    <div class="panel">
-      <div class="row" style="margin-bottom:12px">
-        <span class="status">布局目标</span>
-        <select id="cfg-device" style="padding:8px;border-radius:8px;background:#0f1115;color:#e8e8ea;border:1px solid #2b303b">
-          <option value="">（选择设备）</option>
-        </select>
-        <span class="status" id="cfg-device-hint"></span>
+    <div class="panel hidden" id="d-layout-panel">
+      <div class="row">
+        <strong style="font-size:14px">布局（本设备）</strong>
+        <span class="status" id="layout-source"></span>
       </div>
+      <p class="hint">
+        布局通过 MQTT 下发到设备并存进它的 NVS；「从设备读取」会把设备当前那份取回来，
+        不依赖插件本地缓存。
+      </p>
       <div class="tabs" id="tabs"></div>
       <div class="tiles" id="tiles"></div>
       <p class="hint">
-        每页最多 4 个卡片（2×2）。点下方实体列表里的条目会加到当前页；发布后屏幕下次开机生效。
+        每页最多 4 个卡片（2×2）。点下方实体列表里的条目会加到当前页。
         type: <code>toggle</code> / <code>scene</code> / <code>sensor</code>。
       </p>
       <div class="row" style="margin-top:12px">
-        <button id="btn-save-layout" class="primary">保存并发布布局</button>
+        <button id="btn-cfg-read">从设备读取</button>
+        <button id="btn-save-layout" class="primary">下发到设备</button>
         <button id="btn-json">查看 / 编辑 JSON</button>
         <span class="status" id="layout-status"></span>
       </div>
@@ -173,10 +167,15 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel hidden" id="d-entities-panel">
       <strong style="font-size:14px">实体</strong>
       <input type="search" id="q" placeholder="搜索实体：灯 / 温度 / script …" style="width:100%;margin-top:10px">
       <div class="entity-list" id="entities"></div>
+    </div>
+
+    <div class="panel">
+      <strong style="font-size:14px">原始 state</strong>
+      <pre id="d-raw" style="font-size:12px;color:#8b93a1;white-space:pre-wrap;word-break:break-all;margin:8px 0 0"></pre>
     </div>
   </section>
 </main>
@@ -196,19 +195,15 @@ function route() {
   const hash = location.hash || "#/";
   $("view-list").classList.add("hidden");
   $("view-detail").classList.add("hidden");
-  $("view-settings").classList.add("hidden");
 
   if (hash.startsWith("#/d/")) {
     currentDevice = decodeURIComponent(hash.slice(4));
+    cfgDevice = currentDevice;
     $("view-detail").classList.remove("hidden");
     renderDetail();
     loadDevices(true);
     loadDeviceFirmware(currentDevice);
-  } else if (hash === "#/settings") {
-    $("view-settings").classList.remove("hidden");
-    populateDeviceSelect();
-    loadLayout();
-    searchEntities();
+    if ((currentCaps || []).indexOf("layout") >= 0) loadLayout();
   } else {
     $("view-list").classList.remove("hidden");
     loadDevices();
@@ -222,7 +217,6 @@ function route() {
 
 window.addEventListener("hashchange", route);
 $("home-link").onclick = () => { location.hash = "#/"; };
-$("btn-settings").onclick = () => { location.hash = "#/settings"; };
 $("btn-refresh").onclick = () => {
   if (!$("view-detail").classList.contains("hidden")) loadDevices(true);
   else if (!$("view-list").classList.contains("hidden")) loadDevices();
@@ -238,18 +232,7 @@ function fmtAge(ts) {
 }
 
 function populateDeviceSelect() {
-  const sel = $("cfg-device");
-  if (!sel) return;
-  const ids = devices.map((d) => d.id);
-  sel.innerHTML = "<option value=''>(选择设备)</option>" +
-    ids.map((id) => "<option value='" + id + "'>" + id + "</option>").join("");
-  if (cfgDevice && ids.indexOf(cfgDevice) < 0) {
-    sel.innerHTML += "<option value='" + cfgDevice + "'>" + cfgDevice + "（未上报）</option>";
-  }
-  sel.value = cfgDevice;
-  $("cfg-device-hint").textContent = cfgDevice
-    ? "保存后 retained 发布到 switchyard/" + cfgDevice + "/cfg（设备立即生效）"
-    : "布局直接下发到设备，不再写 /config/www 里的文件";
+  /* 布局现在固定在设备页里，不再需要选择器；保留空实现兼容旧调用 */
 }
 
 async function checkSelfUpdate() {
@@ -388,6 +371,14 @@ function renderDetail() {
   $("d-bright").classList.toggle("hidden", !has("brightness"));
   $("d-set-bright").classList.toggle("hidden", !has("brightness"));
   $("d-bright-label").classList.toggle("hidden", !has("brightness"));
+
+  // 布局面板只给上报了 layout 能力的设备
+  const canLayout = has("layout");
+  $("d-layout-panel").classList.toggle("hidden", !canLayout);
+  $("d-entities-panel").classList.toggle("hidden", !canLayout);
+  if (canLayout) {
+    searchEntities();
+  }
   $("d-caps").textContent = currentCaps.length ? "能力: " + currentCaps.join(" / ") : "能力: 未上报（按类型默认）";
   $("d-raw").textContent = JSON.stringify(d.raw, null, 2);
 }
@@ -416,12 +407,6 @@ async function sendCmd(payload) {
     st.className = "status err";
   }
 }
-
-$("cfg-device") && ($("cfg-device").onchange = () => {
-  cfgDevice = $("cfg-device").value;
-  populateDeviceSelect();
-  loadLayout();
-});
 
 $("d-forget").onclick = async () => {
   if (!currentDevice) return;
@@ -456,8 +441,28 @@ $("d-forget").onclick = async () => {
 };
 
 $("d-layout").onclick = () => {
-  cfgDevice = currentDevice || "";
-  location.hash = "#/settings";
+  // 布局面板就在本页，滚过去即可
+  const panel = $("d-layout-panel");
+  if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
+$("btn-cfg-read").onclick = async () => {
+  if (!currentDevice) return;
+  setLayoutStatus("向设备读取中…");
+  try {
+    const resp = await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/layout?refresh=1");
+    const data = await resp.json();
+    if (!data.ok) { setLayoutStatus("读取失败: " + data.error, "err"); return; }
+    if (!data.layout) { setLayoutStatus("设备还没收到过布局", "err"); return; }
+    layout = data.layout;
+    if (!layout.pages || !layout.pages.length) layout.pages = [{ name: "Devices", tiles: [] }];
+    page = 0;
+    renderLayout();
+    $("layout-source").textContent = "来源: 设备";
+    setLayoutStatus("已从设备读取 ✓", "ok");
+  } catch (e) {
+    setLayoutStatus("读取失败: " + e, "err");
+  }
 };
 
 $("btn-back").onclick = () => {
@@ -471,7 +476,7 @@ $("d-ota").onclick = async () => {
   const resp = await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/firmware");
   const data = await resp.json();
   if (!data.ok || !data.firmware) {
-    st.textContent = "先到「布局 / 固件」页上传固件";
+    st.textContent = "先在本页「本设备固件」里上传固件";
     st.className = "status err";
     return;
   }
@@ -501,7 +506,7 @@ async function loadLayout() {
     layout = { title: "Home", pages: [{ name: "Devices", tiles: [] }] };
     page = 0;
     renderLayout();
-    setLayoutStatus("先在上方选择一台设备", "err");
+    setLayoutStatus("没有选中设备", "err");
     return;
   }
   const url = "api/devices/" + encodeURIComponent(cfgDevice) + "/layout";
@@ -512,7 +517,11 @@ async function loadLayout() {
   if (!layout.pages || !layout.pages.length) layout.pages = [{ name: "Devices", tiles: [] }];
   page = 0;
   renderLayout();
-  setLayoutStatus(cfgDevice ? "已读取 " + cfgDevice + " 的布局" : "已读取全局布局", "ok");
+  $("layout-source").textContent =
+    data.source === "device" ? "来源: 设备（MQTT 回读）"
+    : data.source === "file" ? "来源: 本地副本"
+    : "设备还没收到过布局";
+  setLayoutStatus("已读取 " + cfgDevice + " 的布局", "ok");
 }
 
 function renderLayout() {

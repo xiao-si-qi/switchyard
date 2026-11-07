@@ -305,6 +305,10 @@ class DeviceStore:
                 except json.JSONDecodeError:
                     dev["state"] = {"raw": payload}
                 dev["availability"] = "online"
+            elif kind == "cfg":
+                # 设备回读或收到下发时都会发到 cfg；缓存下来给编辑器用
+                dev["cfg"] = payload
+                dev["cfg_at"] = int(time.time())
             elif kind == "meta":
                 try:
                     dev["meta"] = json.loads(payload)
@@ -362,6 +366,14 @@ class DeviceStore:
                 )
             out.sort(key=lambda d: d["id"])
             return out
+
+    def device_cfg(self, device_id):
+        """设备当前布局（原样 JSON 字符串），没收到过返回 None。"""
+        with self._lock:
+            dev = self._devices.get(device_id)
+            if dev is None:
+                return None
+            return dev.get("cfg") or None
 
     def get_device(self, device_id):
         """Flat view of one device (same shape as snapshot() items)."""

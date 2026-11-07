@@ -65,6 +65,7 @@
 {"seq":13,"cmd":"layout","url":"https://ha.example.com/local/switchyard/layout/hall.json"}
 {"seq":14,"cmd":"reboot"}
 {"seq":16,"cmd":"state"}   // 立刻上报 state/meta
+{"seq":17,"cmd":"get","key":"layout"}   // 把 NVS 里的布局回发到 cfg
 {"seq":15,"cmd":"set","key":"brightness","value":60}
 ```
 
