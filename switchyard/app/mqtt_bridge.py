@@ -329,6 +329,25 @@ class DeviceStore:
             out.sort(key=lambda d: d["id"])
             return out
 
+    def get_device(self, device_id):
+        """Flat view of one device (same shape as snapshot() items)."""
+        with self._lock:
+            dev = self._devices.get(device_id)
+            if dev is None:
+                return None
+            state = dict(dev["state"])
+            now = int(time.time())
+            fresh = dev["last_seen"] and (now - dev["last_seen"]) <= self._stale_after
+            return {
+                "id": dev["id"],
+                "online": dev["availability"] == "online" and fresh,
+                "availability": dev["availability"],
+                "type": state.get("type", "unknown"),
+                "fw": state.get("fw"),
+                "last_seen": dev["last_seen"],
+                "raw": state,
+            }
+
     def next_seq(self, device_id):
         with self._lock:
             self._seq[device_id] = self._seq.get(device_id, 0) + 1

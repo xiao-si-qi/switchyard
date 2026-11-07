@@ -49,6 +49,22 @@ HA 的 Mosquitto 加载项用 Home Assistant 的账号做认证（不是 anonymo
 - 支持 N 块同款屏各用各的布局（设备 id 由固件自动生成 `orbis-xxxx`）；
 - 设备详情页的「编辑本设备布局」会自动把目标切到那台设备。
 
+### 自动变成 HA 实体（MQTT Discovery）
+
+每台注册的设备，Switchyard 会替它发布一套 HA MQTT Discovery（retained），
+所以在 HA 里直接就是一个设备 + 一组实体，**设备固件不用改**：
+
+| 实体 | 类型 | 来源 |
+|---|---|---|
+| 固件 / 信号 / 运行时长 / 电量 | sensor | `switchyard/<id>/state` 的 JSON 字段（`value_template`）|
+| 在线 | binary_sensor（connectivity）| `switchyard/<id>/availability` |
+| 重启 / 检查更新 | button | 发布 `{"cmd":"reboot"}` / `{"cmd":"ota"}` 到 `switchyard/<id>/cmd` |
+
+- discovery 主题：`homeassistant/<component>/switchyard_<id>/<object>/config`；
+- 设备首次上报时发布一次，固件版本/类型变化时重发，另外每 5 分钟补发一次
+  （broker 没开持久化时，重启后配置不会丢）；
+- 「删除设备」会把这些 discovery 配置一起清掉（空 retained）。
+
 ### 改设备名（device_id）
 
 device_id 是 MQTT 主题里那一段（`switchyard/<device_id>/...`），改它等于换身份：

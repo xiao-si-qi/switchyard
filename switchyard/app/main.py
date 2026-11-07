@@ -14,11 +14,13 @@ import json
 import os
 import hashlib
 import tempfile
+import threading
 import time
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import discovery
 import mqtt_bridge
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -266,6 +268,8 @@ class Handler(BaseHTTPRequestHandler):
         if "/api/devices/" in path and path.endswith("/forget"):
             device_id = path.split("/api/devices/", 1)[1].rsplit("/forget", 1)[0]
             STORE.forget(device_id)
+            discovery.remove_device(MQTT, device_id)
+            DISCOVERY_SEEN.pop(device_id, None)
             cleared = []
             if MQTT is not None and MQTT.connected:
                 # 清掉 broker 上该设备的 retained 消息，否则重启后又会"复活"
@@ -408,6 +412,34 @@ STORE = mqtt_bridge.DeviceStore(
 MQTT = None
 
 
+DISCOVERY_SEEN = {}
+
+
+def on_mqtt_message(topic, payload):
+    STORE.on_message(topic, payload)
+    if topic.endswith("/state"):
+        device_id = topic.split("/")[1]
+        dev = STORE.get_device(device_id)
+        if dev is None:
+            return
+        key = (dev.get("type"), dev.get("fw"))
+        if DISCOVERY_SEEN.get(device_id) != key:
+            n = discovery.publish_device(MQTT, device_id, dev["raw"])
+            if n:
+                DISCOVERY_SEEN[device_id] = key
+                print("discovery: %d entities for %s" % (n, device_id), flush=True)
+
+
+def discovery_loop():
+    """每 5 分钟补发一次（broker 没开持久化时，重启后实体配置会丢）。"""
+    while True:
+        time.sleep(300)
+        if MQTT is None or not MQTT.connected:
+            continue
+        for dev in STORE.snapshot():
+            discovery.publish_device(MQTT, dev["id"], dev["raw"])
+
+
 def start_mqtt():
     """按加载项选项启动 MQTT 订阅；没配 host 就不启，界面显示未连接。"""
     host = OPTS.get("mqtt_host") or os.environ.get("MQTT_HOST") or "core-mosquitto"
@@ -416,8 +448,9 @@ def start_mqtt():
     password = OPTS.get("mqtt_password") or os.environ.get("MQTT_PASSWORD") or ""
     global MQTT
     MQTT = mqtt_bridge.MqttClient(host, port, user, password, client_id="switchyard")
-    MQTT.set_on_message(STORE.on_message)
+    MQTT.set_on_message(on_mqtt_message)
     MQTT.start(["switchyard/+/state", "switchyard/+/availability", "switchyard/+/event"])
+    threading.Thread(target=discovery_loop, daemon=True).start()
     print("mqtt: connecting to %s:%s as %s" % (host, port, user or "<anonymous>"), flush=True)
 
 
