@@ -1,5 +1,5 @@
 name: Switchyard
-version: "0.2.0"
+version: "0.3.1"
 slug: switchyard
 description: ESP32 设备统一上位机：设备台账、屏幕布局下发、固件 OTA
 url: https://github.com/xiao-si-qi/switchyard
@@ -22,9 +22,13 @@ options:
   mqtt_port: 1883
   mqtt_username: ""
   mqtt_password: ""
+  public_url: ""
+  device_stale_seconds: 300
 schema:
   www_dir: str
   mqtt_host: str
   mqtt_port: port
   mqtt_username: str
   mqtt_password: password
+  public_url: str
+  device_stale_seconds: int

@@ -3,15 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Switchyard · 设备与布局</title>
+<title>Switchyard</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-         background: #0f1115; color: #e8e8ea; }
-  header { display: flex; gap: 12px; align-items: center; padding: 12px 16px;
-           border-bottom: 1px solid #23262d; position: sticky; top: 0; background: #0f1115; z-index: 5; }
-  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #0f1115; color: #e8e8ea; }
+  header { display: flex; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid #23262d;
+           position: sticky; top: 0; background: #0f1115; z-index: 5; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; cursor: pointer; }
   header .spacer { flex: 1; }
   button { background: #2a2f3a; color: #e8e8ea; border: 1px solid #363c48; border-radius: 8px;
            padding: 7px 12px; font-size: 13px; cursor: pointer; }
@@ -19,12 +18,30 @@
   button.primary { background: #2563eb; border-color: #2563eb; }
   button.primary:hover { background: #1d4ed8; }
   button.danger { background: transparent; border-color: #7f1d1d; color: #fca5a5; padding: 2px 8px; }
-  main { display: grid; grid-template-columns: 1fr 320px; gap: 16px; padding: 16px; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
-  .panel { background: #151821; border: 1px solid #23262d; border-radius: 12px; padding: 14px; }
+  main { padding: 16px; max-width: 1100px; margin: 0 auto; }
+  .panel { background: #151821; border: 1px solid #23262d; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  .status { font-size: 12px; color: #8b93a1; }
+  .status.ok { color: #34d399; }
+  .status.err { color: #f87171; }
+  .hidden { display: none !important; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .dev { background: #1b202a; border: 1px solid #2b303b; border-radius: 12px; padding: 12px 14px; cursor: pointer; }
+  .dev:hover { border-color: #3b82f6; }
+  .dev .top { display: flex; align-items: center; gap: 8px; }
+  .dev .dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; }
+  .dev .dot.on { background: #30d158; }
+  .dev .id { font-size: 15px; font-weight: 600; }
+  .dev .type { font-size: 11px; color: #6b7280; margin-left: auto; }
+  .dev .meta { font-size: 12px; color: #8b93a1; margin-top: 8px; line-height: 1.6; }
+
+  .kv { display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; font-size: 13px; }
+  .kv .k { color: #8b93a1; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  input[type=text], input[type=search], input[type=number] { padding: 8px 10px; border-radius: 8px; border: 1px solid #2b303b;
+         background: #0f1115; color: #e8e8ea; font-size: 13px; }
   .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-  .tab { padding: 6px 12px; border-radius: 999px; background: #1d212b; border: 1px solid #2b303b;
-         cursor: pointer; font-size: 13px; }
+  .tab { padding: 6px 12px; border-radius: 999px; background: #1d212b; border: 1px solid #2b303b; cursor: pointer; font-size: 13px; }
   .tab.active { background: #2563eb; border-color: #2563eb; }
   .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .tile { background: #1b202a; border: 1px solid #2b303b; border-radius: 12px; padding: 10px; min-height: 74px;
@@ -35,97 +52,294 @@
   .tile .type { font-size: 11px; color: #6b7280; margin-top: 6px; }
   .tile.empty { border-style: dashed; color: #4b5563; align-items: center; justify-content: center; font-size: 12px; }
   .hint { font-size: 12px; color: #8b93a1; margin: 10px 0 0; line-height: 1.5; }
-  input[type=search], input[type=text] { width: 100%; padding: 8px 10px; border-radius: 8px;
-         border: 1px solid #2b303b; background: #0f1115; color: #e8e8ea; font-size: 13px; }
-  .entity-list { max-height: 420px; overflow: auto; margin-top: 10px; }
+  .entity-list { max-height: 380px; overflow: auto; margin-top: 10px; }
   .entity { padding: 7px 9px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; }
   .entity:hover { background: #1d212b; }
   .entity .n { font-size: 13px; }
   .entity .i { font-size: 11px; color: #6b7280; }
   .entity .s { font-size: 11px; color: #10b981; }
-  textarea { width: 100%; min-height: 260px; background: #0b0d12; color: #cbd5e1; border: 1px solid #2b303b;
+  textarea { width: 100%; min-height: 220px; background: #0b0d12; color: #cbd5e1; border: 1px solid #2b303b;
              border-radius: 10px; padding: 10px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
-  .dev { background: #1b202a; border: 1px solid #2b303b; border-radius: 12px; padding: 10px 12px; }
-  .dev .top { display: flex; align-items: center; gap: 8px; }
-  .dev .dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; }
-  .dev .dot.on { background: #30d158; }
-  .dev .id { font-size: 14px; font-weight: 600; }
-  .dev .type { font-size: 11px; color: #6b7280; margin-left: auto; }
-  .dev .meta { font-size: 12px; color: #8b93a1; margin-top: 6px; line-height: 1.5; }
-  .status { font-size: 12px; color: #8b93a1; }
-  .status.ok { color: #34d399; }
-  .status.err { color: #f87171; }
-  .hidden { display: none; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Switchyard</h1>
-  <span class="status" id="status">加载中…</span>
-  <div class="spacer"></div>
-  <button id="btn-json">查看 / 编辑 JSON</button>
-  <button id="btn-reload">重新读取</button>
-  <button class="primary" id="btn-save">保存并发布</button>
+  <h1 id="home-link">Switchyard</h1>
+  <span class="status" id="mqtt-status">连接中…</span>
+  <span class="spacer" style="flex:1"></span>
+  <button id="btn-settings">布局 / 固件</button>
+  <button id="btn-refresh">刷新</button>
 </header>
 
 <main>
-  <section class="panel" style="grid-column:1/-1">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <strong style="font-size:14px">设备</strong>
-      <span class="status" id="mqtt-status">MQTT 连接中…</span>
-      <span class="spacer" style="flex:1"></span>
-      <button id="btn-dev-refresh">刷新</button>
+  <section id="view-list">
+    <div class="panel">
+      <div class="row">
+        <strong style="font-size:14px">设备</strong>
+        <span class="status" id="dev-count"></span>
+      </div>
+      <p class="hint">设备连上 MQTT 后发布 <code>orbis/&lt;id&gt;/state</code>（retained）就会出现在这里；点卡片进入设备操作页。</p>
+      <div class="grid" id="devices" style="margin-top:12px"></div>
     </div>
-    <div id="devices" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:12px"></div>
   </section>
 
-  <section class="panel">
-    <div class="tabs" id="tabs"></div>
-    <div class="tiles" id="tiles"></div>
-    <p class="hint">
-      每页最多 4 个卡片（2×2）。点右侧实体列表里的条目会加到当前页；发布后屏幕在下次开机时生效
-      （目前没有热重载）。type: <code>toggle</code> 开关、<code>scene</code> 场景、<code>sensor</code> 只读。
-    </p>
-    <div id="json-box" class="hidden" style="margin-top:14px">
-      <textarea id="json-text" spellcheck="false"></textarea>
-      <p class="hint">可直接编辑 JSON 后点“应用到编辑器”，再点“保存并发布”。</p>
-      <button id="btn-json-apply">应用到编辑器</button>
+  <section id="view-detail" class="hidden">
+    <div class="panel">
+      <div class="row">
+        <button id="btn-back">← 返回</button>
+        <strong id="d-title" style="font-size:16px"></strong>
+        <span class="status" id="d-status"></span>
+      </div>
+      <div class="kv" id="d-kv" style="margin-top:14px"></div>
     </div>
 
-    <hr style="border:0;border-top:1px solid #23262d;margin:18px 0">
-    <div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <strong style="font-size:13px">固件 OTA</strong>
-        <span class="status" id="fw-info">读取中…</span>
+    <div class="panel">
+      <strong style="font-size:14px">操作</strong>
+      <div class="actions">
+        <button id="d-reboot">重启设备</button>
+        <button id="d-ota" class="primary">下发 OTA</button>
+        <span class="status" id="d-action-status"></span>
       </div>
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">
-        <input type="file" id="fw-file" accept=".bin" style="font-size:12px">
-        <input type="text" id="fw-version" placeholder="版本号，如 0.1.2" style="width:140px">
-        <button class="primary" id="btn-fw-upload">上传并发布</button>
+      <div class="actions">
+        <span class="status">亮度</span>
+        <input type="number" id="d-bright" min="10" max="100" value="80" style="width:90px">
+        <button id="d-set-bright">发送</button>
       </div>
       <p class="hint">
-        上传的是 <code>idf.py build</code> 产出的 <code>orbis.bin</code>（首字节 0xE9）。
-        发布后设备在「System」页点「检查更新」即可下载；版本号与设备当前固件相同则不动。
+        下发 OTA 用的是「布局 / 固件」页上传的固件（版本号 + 公开地址）。设备收到
+        <code>cmd:ota</code> 后自己下载、写另一个槽、重启；断电不影响当前固件。
       </p>
+    </div>
+
+    <div class="panel">
+      <strong style="font-size:14px">原始 state</strong>
+      <pre id="d-raw" style="font-size:12px;color:#8b93a1;white-space:pre-wrap;word-break:break-all;margin:8px 0 0"></pre>
     </div>
   </section>
 
-  <aside class="panel">
-    <input type="search" id="q" placeholder="搜索实体：灯 / 温度 / script …">
-    <div class="entity-list" id="entities"></div>
-  </aside>
+  <section id="view-settings" class="hidden">
+    <div class="panel">
+      <div class="tabs" id="tabs"></div>
+      <div class="tiles" id="tiles"></div>
+      <p class="hint">
+        每页最多 4 个卡片（2×2）。点下方实体列表里的条目会加到当前页；发布后屏幕下次开机生效。
+        type: <code>toggle</code> / <code>scene</code> / <code>sensor</code>。
+      </p>
+      <div class="row" style="margin-top:12px">
+        <button id="btn-save-layout" class="primary">保存并发布布局</button>
+        <button id="btn-json">查看 / 编辑 JSON</button>
+        <span class="status" id="layout-status"></span>
+      </div>
+      <div id="json-box" class="hidden" style="margin-top:14px">
+        <textarea id="json-text" spellcheck="false"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="btn-json-apply">应用到编辑器</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <strong style="font-size:14px">固件 OTA</strong>
+        <span class="status" id="fw-info">读取中…</span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <input type="file" id="fw-file" accept=".bin" style="font-size:12px">
+        <input type="text" id="fw-version" placeholder="版本号，如 0.2.0" style="width:150px">
+        <button class="primary" id="btn-fw-upload">上传并发布</button>
+      </div>
+      <p class="hint">上传 <code>idf.py build</code> 产出的 <code>orbis.bin</code>（首字节 0xE9）。上传后在设备页点「下发 OTA」。</p>
+    </div>
+
+    <div class="panel">
+      <strong style="font-size:14px">实体</strong>
+      <input type="search" id="q" placeholder="搜索实体：灯 / 温度 / script …" style="width:100%;margin-top:10px">
+      <div class="entity-list" id="entities"></div>
+    </div>
+  </section>
 </main>
 
 <script>
+const $ = (id) => document.getElementById(id);
 let layout = { title: "Home", pages: [{ name: "Devices", tiles: [] }] };
 let page = 0;
+let devices = [];
+let currentDevice = null;
+let pollTimer = null;
 
-const $ = (id) => document.getElementById(id);
-const statusEl = $("status");
+function route() {
+  const hash = location.hash || "#/";
+  $("view-list").classList.add("hidden");
+  $("view-detail").classList.add("hidden");
+  $("view-settings").classList.add("hidden");
 
-function setStatus(text, kind) {
-  statusEl.textContent = text;
-  statusEl.className = "status" + (kind ? " " + kind : "");
+  if (hash.startsWith("#/d/")) {
+    currentDevice = decodeURIComponent(hash.slice(4));
+    $("view-detail").classList.remove("hidden");
+    renderDetail();
+    loadDevices(true);
+  } else if (hash === "#/settings") {
+    $("view-settings").classList.remove("hidden");
+    loadLayout();
+    loadFirmware();
+    searchEntities();
+  } else {
+    $("view-list").classList.remove("hidden");
+    loadDevices();
+  }
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(() => {
+    if (!$("view-detail").classList.contains("hidden")) loadDevices(true);
+    else if (!$("view-list").classList.contains("hidden")) loadDevices();
+  }, 5000);
+}
+
+window.addEventListener("hashchange", route);
+$("home-link").onclick = () => { location.hash = "#/"; };
+$("btn-settings").onclick = () => { location.hash = "#/settings"; };
+$("btn-refresh").onclick = () => {
+  if (!$("view-detail").classList.contains("hidden")) loadDevices(true);
+  else if (!$("view-list").classList.contains("hidden")) loadDevices();
+};
+
+function fmtAge(ts) {
+  if (!ts) return "-";
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (s < 60) return s + " 秒前";
+  if (s < 3600) return Math.floor(s / 60) + " 分钟前";
+  if (s < 86400) return Math.floor(s / 3600) + " 小时前";
+  return Math.floor(s / 86400) + " 天前";
+}
+
+async function loadDevices(forDetail) {
+  try {
+    const resp = await fetch("api/devices");
+    const data = await resp.json();
+    devices = data.devices || [];
+    const mqtt = data.mqtt || {};
+    const st = $("mqtt-status");
+    st.textContent = mqtt.connected ? "MQTT 已连接" : "MQTT 未连接" + (mqtt.last_error ? " · " + mqtt.last_error : "");
+    st.className = "status " + (mqtt.connected ? "ok" : "err");
+    $("dev-count").textContent = devices.length + " 台设备";
+    if (forDetail) renderDetail(); else renderDevices();
+  } catch (e) {
+    $("mqtt-status").textContent = "读取设备失败: " + e;
+    $("mqtt-status").className = "status err";
+  }
+}
+
+function renderDevices() {
+  const box = $("devices");
+  box.innerHTML = "";
+  if (!devices.length) {
+    box.innerHTML = "<div class='dev'><div class='meta'>还没有设备上报。设备发布 <code>orbis/&lt;id&gt;/state</code> 后就会出现。</div></div>";
+    return;
+  }
+  devices.forEach((d) => {
+    const el = document.createElement("div");
+    el.className = "dev";
+    el.innerHTML = "<div class='top'><span class='dot'></span><span class='id'></span><span class='type'></span></div><div class='meta'></div>";
+    if (d.online) el.querySelector(".dot").classList.add("on");
+    el.querySelector(".id").textContent = d.id;
+    el.querySelector(".type").textContent = d.type;
+    const bits = [];
+    if (d.fw) bits.push("固件 " + d.fw);
+    if (d.rssi !== null && d.rssi !== undefined) bits.push(d.rssi + " dBm");
+    if (d.battery !== null && d.battery !== undefined) bits.push("电量 " + d.battery + "%");
+    bits.push("最后上报 " + fmtAge(d.last_seen));
+    el.querySelector(".meta").textContent = bits.join(" · ");
+    el.onclick = () => { location.hash = "#/d/" + encodeURIComponent(d.id); };
+    box.appendChild(el);
+  });
+}
+
+function renderDetail() {
+  const d = devices.find((x) => x.id === currentDevice);
+  $("d-title").textContent = currentDevice || "(未知设备)";
+  const st = $("d-status");
+  if (!d) {
+    st.textContent = "没有这台设备的状态";
+    st.className = "status err";
+    $("d-kv").innerHTML = "";
+    $("d-raw").textContent = "";
+    return;
+  }
+  st.textContent = d.online ? "在线" : "离线";
+  st.className = "status " + (d.online ? "ok" : "err");
+  const rows = [
+    ["设备 id", d.id],
+    ["类型", d.type],
+    ["固件", d.fw || "-"],
+    ["IP", d.ip || "-"],
+    ["信号", d.rssi !== null && d.rssi !== undefined ? d.rssi + " dBm" : "-"],
+    ["电量", d.battery !== null && d.battery !== undefined ? d.battery + " %" : "-"],
+    ["最后上报", fmtAge(d.last_seen)],
+  ];
+  const kv = $("d-kv");
+  kv.innerHTML = "";
+  rows.forEach(([k, v]) => {
+    const kd = document.createElement("div");
+    kd.className = "k";
+    kd.textContent = k;
+    const vd = document.createElement("div");
+    vd.textContent = v;
+    kv.appendChild(kd);
+    kv.appendChild(vd);
+  });
+  $("d-raw").textContent = JSON.stringify(d.raw, null, 2);
+}
+
+async function sendCmd(payload) {
+  if (!currentDevice) return;
+  const st = $("d-action-status");
+  st.textContent = "发送中…";
+  st.className = "status";
+  try {
+    const resp = await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/cmd", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      st.textContent = "已发送 seq=" + data.seq;
+      st.className = "status ok";
+    } else {
+      st.textContent = "失败: " + data.error;
+      st.className = "status err";
+    }
+  } catch (e) {
+    st.textContent = "失败: " + e;
+    st.className = "status err";
+  }
+}
+
+$("btn-back").onclick = () => { location.hash = "#/"; };
+$("d-reboot").onclick = () => sendCmd({ cmd: "reboot" });
+$("d-set-bright").onclick = () => sendCmd({ cmd: "set", key: "brightness", value: Number($("d-bright").value) });
+$("d-ota").onclick = async () => {
+  const st = $("d-action-status");
+  const resp = await fetch("api/firmware");
+  const data = await resp.json();
+  if (!data.ok || !data.firmware) {
+    st.textContent = "先到「布局 / 固件」页上传固件";
+    st.className = "status err";
+    return;
+  }
+  if (!data.public_url) {
+    st.textContent = "加载项需要配置 public_url（设备用它下载固件）";
+    st.className = "status err";
+    return;
+  }
+  const url = data.public_url.replace(/\/$/, "") + "/local/orbis/firmware.bin";
+  sendCmd({ cmd: "ota", url: url, version: data.firmware.version });
+};
+
+function setLayoutStatus(text, kind) {
+  const el = $("layout-status");
+  el.textContent = text;
+  el.className = "status" + (kind ? " " + kind : "");
 }
 
 function typeOf(entity) {
@@ -134,29 +348,29 @@ function typeOf(entity) {
   return "toggle";
 }
 
-async function load() {
-  setStatus("读取中…");
+async function loadLayout() {
+  setLayoutStatus("读取中…");
   const resp = await fetch("api/layout");
   const data = await resp.json();
-  if (!data.ok) { setStatus("读取失败: " + data.error, "err"); return; }
+  if (!data.ok) { setLayoutStatus("读取失败: " + data.error, "err"); return; }
   layout = data.layout || layout;
   if (!layout.pages || !layout.pages.length) layout.pages = [{ name: "Devices", tiles: [] }];
   page = 0;
-  render();
-  setStatus("已读取 " + (data.layout_path || ""), "ok");
+  renderLayout();
+  setLayoutStatus("已读取", "ok");
 }
 
-function render() {
+function renderLayout() {
   const tabs = $("tabs");
   tabs.innerHTML = "";
   layout.pages.forEach((p, i) => {
     const el = document.createElement("div");
     el.className = "tab" + (i === page ? " active" : "");
     el.textContent = p.name;
-    el.onclick = () => { page = i; render(); };
+    el.onclick = () => { page = i; renderLayout(); };
     el.ondblclick = () => {
       const name = prompt("页面名称", p.name);
-      if (name) { p.name = name; render(); }
+      if (name) { p.name = name; renderLayout(); }
     };
     tabs.appendChild(el);
   });
@@ -167,7 +381,7 @@ function render() {
     if (layout.pages.length >= 6) { alert("最多 6 页"); return; }
     layout.pages.push({ name: "Page " + (layout.pages.length + 1), tiles: [] });
     page = layout.pages.length - 1;
-    render();
+    renderLayout();
   };
   tabs.appendChild(add);
 
@@ -184,24 +398,24 @@ function render() {
       continue;
     }
     el.className = "tile";
-    el.innerHTML = `<div class="row"><div><div class="label"></div><div class="entity"></div></div>
-                    <button class="danger">删除</button></div><div class="type"></div>`;
+    el.innerHTML = "<div class='row'><div><div class='label'></div><div class='entity'></div></div>" +
+                   "<button class='danger'>删除</button></div><div class='type'></div>";
     el.querySelector(".label").textContent = tile.label || tile.entity;
     el.querySelector(".entity").textContent = tile.entity;
     el.querySelector(".type").textContent = tile.type || typeOf(tile.entity);
-    el.querySelector("button").onclick = () => { cur.tiles.splice(i, 1); render(); };
+    el.querySelector("button").onclick = () => { cur.tiles.splice(i, 1); renderLayout(); };
     el.onclick = (ev) => {
       if (ev.target.tagName === "BUTTON") return;
       const label = prompt("卡片标题（留空用 HA 的 friendly_name）", tile.label || "");
       if (label === null) return;
       tile.label = label;
-      render();
+      renderLayout();
     };
     tiles.appendChild(el);
   }
 }
 
-async function search() {
+async function searchEntities() {
   const q = $("q").value.trim();
   const list = $("entities");
   list.innerHTML = "<div class='entity'><span class='i'>搜索中…</span></div>";
@@ -226,57 +440,48 @@ async function search() {
     el.onclick = () => {
       const cur = layout.pages[page];
       if (cur.tiles.length >= 4) { alert("这页已经满了（4 个）"); return; }
-      cur.tiles.push({ entity: e.entity_id, label: e.name, type: typeOf(e.entity_id) });
-      render();
+      cur.tiles.push({ entity: e.entity_id, name: e.name, label: e.name, type: typeOf(e.entity_id) });
+      renderLayout();
     };
     list.appendChild(el);
   });
 }
 
-function toggleJson(show) {
-  const box = $("json-box");
-  const visible = show === undefined ? box.classList.contains("hidden") : show;
-  if (visible) {
-    $("json-text").value = JSON.stringify(layout, null, 2);
-    box.classList.remove("hidden");
-  } else {
-    box.classList.add("hidden");
-  }
-}
-
-$("btn-json").onclick = () => toggleJson();
-$("btn-json-apply").onclick = () => {
-  try {
-    layout = JSON.parse($("json-text").value);
-    page = 0;
-    render();
-    setStatus("已应用 JSON 到编辑器（还没发布）", "ok");
-  } catch (e) {
-    setStatus("JSON 解析失败: " + e.message, "err");
-  }
-};
-$("btn-reload").onclick = load;
-$("btn-save").onclick = async () => {
-  setStatus("发布中…");
+$("btn-save-layout").onclick = async () => {
+  setLayoutStatus("发布中…");
   const resp = await fetch("api/layout", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(layout),
   });
   const data = await resp.json();
-  if (data.ok) {
-    setStatus("已发布 v" + data.version + " → " + data.layout_path + "（屏幕重启后生效）", "ok");
+  if (data.ok) setLayoutStatus("已发布 v" + data.version, "ok");
+  else setLayoutStatus("发布失败: " + data.error, "err");
+};
+$("btn-json").onclick = () => {
+  const box = $("json-box");
+  if (box.classList.contains("hidden")) {
+    $("json-text").value = JSON.stringify(layout, null, 2);
+    box.classList.remove("hidden");
   } else {
-    setStatus("发布失败: " + data.error, "err");
+    box.classList.add("hidden");
   }
 };
-
-let timer = null;
+$("btn-json-apply").onclick = () => {
+  try {
+    layout = JSON.parse($("json-text").value);
+    page = 0;
+    renderLayout();
+    setLayoutStatus("已应用到编辑器（还没发布）", "ok");
+  } catch (e) {
+    setLayoutStatus("JSON 解析失败: " + e.message, "err");
+  }
+};
+let searchTimer = null;
 $("q").addEventListener("input", () => {
-  clearTimeout(timer);
-  timer = setTimeout(search, 300);
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(searchEntities, 300);
 });
-
 
 async function loadFirmware() {
   const el = $("fw-info");
@@ -297,7 +502,7 @@ $("btn-fw-upload").onclick = async () => {
   const version = $("fw-version").value.trim();
   const el = $("fw-info");
   if (!input.files || !input.files.length) { alert("先选一个 .bin 文件"); return; }
-  if (!version) { alert("填一个版本号，例如 0.1.2"); return; }
+  if (!version) { alert("填一个版本号，例如 0.2.0"); return; }
   const file = input.files[0];
   el.textContent = "上传中… " + Math.round(file.size / 1024) + " KB";
   try {
@@ -307,72 +512,15 @@ $("btn-fw-upload").onclick = async () => {
       body: file,
     });
     const data = await resp.json();
-    if (data.ok) {
-      el.textContent = "已发布 v" + data.firmware.version + " · " + Math.round(data.firmware.size / 1024) + " KB";
-    } else {
-      el.textContent = "失败: " + data.error;
-    }
+    el.textContent = data.ok
+      ? "已发布 v" + data.firmware.version + " · " + Math.round(data.firmware.size / 1024) + " KB"
+      : "失败: " + data.error;
   } catch (e) {
     el.textContent = "失败: " + e;
   }
 };
 
-load().then(() => search());
-loadFirmware();
-
-function fmtAge(ts) {
-  if (!ts) return "-";
-  const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
-  if (s < 60) return s + " 秒前";
-  if (s < 3600) return Math.floor(s / 60) + " 分钟前";
-  if (s < 86400) return Math.floor(s / 3600) + " 小时前";
-  return Math.floor(s / 86400) + " 天前";
-}
-
-async function loadDevices() {
-  const box = $("devices");
-  const st = $("mqtt-status");
-  try {
-    const resp = await fetch("api/devices");
-    const data = await resp.json();
-    const mqtt = data.mqtt || {};
-    st.textContent = mqtt.connected
-      ? "MQTT 已连接 · " + (data.devices || []).length + " 台设备"
-      : "MQTT 未连接" + (mqtt.last_error ? " · " + mqtt.last_error : "");
-    st.className = "status " + (mqtt.connected ? "ok" : "err");
-
-    box.innerHTML = "";
-    const devices = data.devices || [];
-    if (!devices.length) {
-      box.innerHTML = "<div class='dev'><div class='meta'>还没有设备上报。设备连上 MQTT 后发布 <code>orbis/&lt;id&gt;/state</code> 就会出现在这里。</div></div>";
-      return;
-    }
-    devices.forEach((d) => {
-      const el = document.createElement("div");
-      el.className = "dev";
-      el.innerHTML = "<div class='top'><span class='dot'></span><span class='id'></span><span class='type'></span></div><div class='meta'></div>";
-      if (d.online) el.querySelector(".dot").classList.add("on");
-      el.querySelector(".id").textContent = d.id;
-      el.querySelector(".type").textContent = d.type;
-      const bits = [];
-      if (d.fw) bits.push("固件 " + d.fw);
-      if (d.rssi !== null && d.rssi !== undefined) bits.push(d.rssi + " dBm");
-      if (d.battery !== null && d.battery !== undefined) bits.push("电量 " + d.battery + "%");
-      if (d.ip) bits.push(d.ip);
-      bits.push("最后上报 " + fmtAge(d.last_seen));
-      el.querySelector(".meta").textContent = bits.join(" · ");
-      box.appendChild(el);
-    });
-  } catch (e) {
-    st.textContent = "读取设备失败: " + e;
-    st.className = "status err";
-  }
-}
-
-$("btn-dev-refresh").onclick = loadDevices;
-loadDevices();
-setInterval(loadDevices, 5000);
-
+route();
 </script>
 </body>
 </html>

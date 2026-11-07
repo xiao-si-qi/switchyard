@@ -24,6 +24,8 @@ https://github.com/xiao-si-qi/switchyard
 | 选项 | 默认 | 说明 |
 |---|---|---|
 | `www_dir` | `/config/www/orbis` | 发布目录；与 Orbis Panel 固件默认路径一致 |
+| `public_url` | 空 | 设备的下载前缀，例如 `https://ha.xiaosiqi.cn`；「下发 OTA」用它拼固件 URL |
+| `device_stale_seconds` | `300` | 超过这么久没有新上报就显示离线（电池设备可以调大）|
 | `mqtt_host` | `core-mosquitto` | HA 官方 Mosquitto 加载项的域名 |
 | `mqtt_port` | `1883` | |
 | `mqtt_username` | 空 | **Mosquitto 加载项默认要求认证**：在 HA「设置 → 人员」里建一个用户，填这里 |
@@ -37,7 +39,14 @@ HA 的 Mosquitto 加载项用 Home Assistant 的账号做认证（不是 anonymo
 2. 打开 Switchyard 加载项 → **配置** → 填入 `mqtt_username` / `mqtt_password` → 保存 → 重启加载项；
 3. 面板顶部应显示 **「MQTT 已连接 · N 台设备」**。
 
-设备一侧只要往 `orbis/<id>/state` 发 retained JSON，就会自动出现在设备列表里。
+### 设备自动注册（不用手工添加）
+
+- 设备第一次往 `orbis/<id>/state`、`orbis/<id>/availability` 或 `orbis/<id>/event` 发消息，
+  就自动出现在设备列表里，**不需要在插件里登记**；
+- 注册表落在 `/data/devices.json`，加载项重启后仍保留（不会因为插件重启而"忘记"设备）；
+- `availability` 是 retained 的，但设备关机后那条 `online` 不会自己消失，所以"在线"还要求
+  **最近 `device_stale_seconds` 内有上报**，超时就显示离线（电池设备本来就长时间不报，按需调大）；
+- 设备页可以「删除设备」（`POST /api/devices/<id>/forget`），把它从注册表里去掉。
 
 ## 为什么是零依赖
 

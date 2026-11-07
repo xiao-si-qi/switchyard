@@ -5,6 +5,7 @@ PINGREQ. No external dependencies, so the add-on image keeps building without pi
 """
 
 import json
+import os
 import socket
 import struct
 import threading
@@ -216,12 +217,53 @@ class MqttClient:
 
 
 class DeviceStore:
-    """Keeps the last known state of every device, fed by retained MQTT topics."""
+    """Keeps the last known state of every device, fed by retained MQTT topics.
 
-    def __init__(self):
+    Devices register themselves the first time they publish anything on
+    orbis/<id>/...; the registry is persisted so the list survives add-on
+    restarts, and "online" also requires a recent message (a retained "online"
+    from a device that is switched off must not look alive forever).
+    """
+
+    def __init__(self, path=None, stale_after=300):
         self._lock = threading.Lock()
         self._devices = {}
         self._seq = {}
+        self._path = path
+        self._stale_after = int(stale_after)
+        self._last_save = 0.0
+        self._load()
+
+    # -- persistence ----------------------------------------------------
+    def _load(self):
+        if not self._path or not os.path.exists(self._path):
+            return
+        try:
+            with open(self._path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            self._devices = data.get("devices", {})
+            self._seq = {k: int(v) for k, v in data.get("seq", {}).items()}
+            print("devices: restored %d from %s" % (len(self._devices), self._path), flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print("devices: restore failed: %s" % exc, flush=True)
+
+    def _save(self, force=False):
+        if not self._path:
+            return
+        now = time.time()
+        if not force and now - self._last_save < 5:
+            return
+        self._last_save = now
+        try:
+            folder = os.path.dirname(self._path)
+            if folder:
+                os.makedirs(folder, exist_ok=True)
+            tmp = self._path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump({"devices": self._devices, "seq": self._seq}, fh, ensure_ascii=False)
+            os.replace(tmp, self._path)
+        except Exception as exc:  # noqa: BLE001
+            print("devices: save failed: %s" % exc, flush=True)
 
     def on_message(self, topic, payload):
         parts = topic.split("/")
@@ -246,16 +288,20 @@ class DeviceStore:
                 except json.JSONDecodeError:
                     dev["event"] = {"raw": payload}
             dev["last_seen"] = int(time.time())
+            self._save()
 
     def snapshot(self):
+        now = int(time.time())
         with self._lock:
             out = []
             for dev in self._devices.values():
                 state = dict(dev["state"])
+                fresh = dev["last_seen"] and (now - dev["last_seen"]) <= self._stale_after
+                online = dev["availability"] == "online" and fresh
                 out.append(
                     {
                         "id": dev["id"],
-                        "online": dev["availability"] == "online",
+                        "online": online,
                         "availability": dev["availability"],
                         "type": state.get("type", "unknown"),
                         "fw": state.get("fw"),
@@ -264,6 +310,7 @@ class DeviceStore:
                         "battery": state.get("battery"),
                         "ip": state.get("ip"),
                         "last_seen": dev["last_seen"],
+                        "stale_seconds": self._stale_after,
                         "event": dev["event"],
                         "raw": state,
                     }
@@ -279,3 +326,9 @@ class DeviceStore:
     def device_count(self):
         with self._lock:
             return len(self._devices)
+
+    def forget(self, device_id):
+        with self._lock:
+            self._devices.pop(device_id, None)
+            self._seq.pop(device_id, None)
+            self._save(force=True)

@@ -173,6 +173,7 @@ class Handler(BaseHTTPRequestHandler):
                     "layout_exists": os.path.exists(LAYOUT_PATH),
                     "token": bool(TOKEN),
                     "mqtt": mqtt_status(),
+                    "devices": STORE.device_count(),
                 }
             )
         elif path.endswith("/api/firmware"):
@@ -183,6 +184,7 @@ class Handler(BaseHTTPRequestHandler):
                     "firmware": meta,
                     "present": os.path.exists(FW_PATH),
                     "max_size": MAX_FW,
+                    "public_url": (OPTS.get("public_url") or os.environ.get("PUBLIC_URL") or "").rstrip("/"),
                 }
             )
         elif path.endswith("/api/devices"):
@@ -229,6 +231,11 @@ class Handler(BaseHTTPRequestHandler):
     # --- POST ------------------------------------------------------------
     def do_POST(self):
         path = self.route()
+        if "/api/devices/" in path and path.endswith("/forget"):
+            device_id = path.split("/api/devices/", 1)[1].rsplit("/forget", 1)[0]
+            STORE.forget(device_id)
+            self.send_json({"ok": True, "forgot": device_id})
+            return
         if "/api/devices/" in path and path.endswith("/cmd"):
             self.handle_device_cmd(path)
             return
@@ -321,7 +328,11 @@ class Handler(BaseHTTPRequestHandler):
         print("%s - %s" % (self.address_string(), fmt % args), flush=True)
 
 
-STORE = mqtt_bridge.DeviceStore()
+DATA_DIR = os.environ.get("DATA_DIR") or ("/data" if os.path.isdir("/data") else os.path.join(APP_DIR, "..", "data"))
+STORE = mqtt_bridge.DeviceStore(
+    path=os.path.join(DATA_DIR, "devices.json"),
+    stale_after=int(OPTS.get("device_stale_seconds") or os.environ.get("STALE_SECONDS") or 300),
+)
 MQTT = None
 
 
