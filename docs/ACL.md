@@ -1,95 +1,189 @@
-# 限制每台设备能发什么（Mosquitto ACL）
+# 方案 B：每台设备一个 MQTT 账号（ACL 隔离）
 
-默认情况下，**同一个 MQTT 账号能往任何主题发消息**。这意味着：
+目标：**账号 `orbis` 只能读写 `switchyard/orbis/#`**，冒充不了别的设备，也进不了
+`homeassistant/#`（防止伪造 HA 实体）。
 
-- 圆屏、墨水屏、水表如果共用一个账号，任何一台被刷了固件/被拆走，都能冒充其它设备；
-- 更能往 `homeassistant/#` 发假设备、往 `ha/#` 干扰你现有的自动化；
-- broker 又暴露在公网（`mqtt.xiaosiqi.cn:1883`），风险会放大。
-
-ACL 就是给每个账号划一块主题空间。
-
-## 主题约定（本项目）
-
-| 角色 | 需要访问的主题 |
-|---|---|
-| Switchyard 插件 | `switchyard/#` 读写、`homeassistant/#` 读写（发 discovery）|
-| 设备（圆屏/墨水屏/水表…）| 只读写 `switchyard/<自己的 id>/#` |
-
-设备的设备 ID 与 MQTT 用户名**同名**最省事，这样 ACL 可以用 `%u` 通配符，一条规则覆盖所有设备。
-
-## 方案 A：最小改动（共用一个账号）
-
-如果暂时不想给每台设备建独立账号，至少把共用账号限制到本项目主题，别让它碰 `ha/`、`gas_meter/` 等：
+核心是这一条 ACL 通配规则：
 
 ```conf
-# /share/mosquitto/acl.conf
-user mqtt
-topic readwrite switchyard/#
-topic readwrite homeassistant/#
-
-user switchyard
-topic readwrite switchyard/#
-topic readwrite homeassistant/#
-
-# 其它账号（HA 自己、其它设备）按需自己加
+pattern readwrite switchyard/%u/#
 ```
 
-缺点：仍然不能阻止"这台设备冒充那台设备"。
+`%u` = 连接时用的用户名。所以用户名必须**等于**设备 ID。
 
-## 方案 B：推荐（每台设备独立账号）
+---
 
-1. 在 HA「设置 → 人员」里给每台设备建一个用户，用户名 = 设备 ID，例如 `orbis`、`bedroom-elink`；
-2. 设备设置页（`http://<设备IP>/`）把 MQTT 用户名/密码改成它自己的；
-3. ACL 用通配符：
+## 0. 先认清现在的账号
+
+| 用途 | 现在 | 目标账号 |
+|---|---|---|
+| HA 核心（MQTT 集成）| 某个 HA 用户（见 MQTT 集成配置页）| 保持不动，ACL 里给全量 |
+| Switchyard 加载项 | `mqtt`（共用）| 新建 `switchyard` |
+| 圆屏 orbis | `mqtt`（共用）| 新建 `orbis` |
+| 墨水屏 / 水表 / 气表 等 | 可能都是 `mqtt` | 逐个迁移，**迁移完再收紧 `mqtt`** |
+
+> 迁移期间可以让 `mqtt` 这个老账号保留原权限，避免其它设备掉线；
+> 等全部迁完，再把它删掉或收紧。
+
+---
+
+## 1. 建账号（HA → 设置 → 人员 → 添加用户）
+
+建三个用户（密码自己记好）：
+
+| 用户名 | 用途 |
+|---|---|
+| `switchyard` | 加载项自己 |
+| `orbis` | 圆屏 |
+| （以后每台设备一个）| 设备 ID 同名 |
+
+> 也可以在 Mosquitto 加载项的 `logins:` 里直接写 `- username: orbis` / `password: ...`，
+> 效果一样，取决于你习惯哪种。
+
+---
+
+## 2. 写 `/share/mosquitto/acl.conf`
 
 ```conf
-# /share/mosquitto/acl.conf
+# ---------- HA 核心：需要读写一切（它要监听所有设备、发布指令）----------
+user homeassistant          # ← 换成你 MQTT 集成里实际用的用户名
+topic readwrite #
 
-# 插件：可以看所有设备 + 发 discovery
+# ---------- Switchyard 加载项 ----------
 user switchyard
 topic readwrite switchyard/#
 topic readwrite homeassistant/#
 
-# 每台设备：只能碰 switchyard/<自己的用户名>/#
+# ---------- 设备：只能碰自己的主题空间 ----------
 pattern readwrite switchyard/%u/#
 
-# 其它账号一律不给（或按需）
+# ---------- 迁移期：其它还没改账号的设备 ----------
+# 全部迁移完之后，把这一段删掉或注释掉
+user mqtt
+topic readwrite #
+
+# ---------- 默认拒绝 ----------
+# Mosquitto 对未列出的用户默认就是拒绝，不用额外写
 ```
 
-`pattern ... %u` 会把 `%u` 替换成连接时用的用户名，所以 `orbis` 这个账号只能发 `switchyard/orbis/...`，改不了别人的状态，也进不了 `homeassistant/#`。
+要点：
 
-## 在 HA 的 Mosquitto 加载项里启用
+- `user homeassistant` 必须是**你 MQTT 集成实际用的那个用户名**，否则 HA 会失联；
+- `pattern` 规则对**所有**账号生效（包括 `switchyard`），所以插件账号也要显式给权限；
+- `mqtt` 那段是过渡，迁完就删。
 
-1. 打开 Mosquitto broker 加载项 → **配置** → 打开自定义配置（`customize`），把 `mosquitto.conf` 放到 `/share/mosquitto/`；
-2. 在 `/share/mosquitto/mosquitto.conf` 里加一行（路径按你的加载项版本可能不同，见加载项文档）：
+---
+
+## 3. 启用 ACL
+
+1. Mosquitto 加载项 → **配置** → 打开 `customize`
+   （如果界面里没有 `customize`，就在加载项配置里加 `customize: {}` 或按版本对应的写法）；
+2. 在 `/share/mosquitto/mosquitto.conf` 里加：
 
 ```conf
 acl_file /share/mosquitto/acl.conf
 ```
 
-3. 重启 Mosquitto 加载项；
-4. 在 `/share/mosquitto/acl.conf` 里写上面的规则（改完再重启一次）。
+3. **顺序很重要**：
 
-> 注意：ACL 一旦生效，**没被授权的账号会立刻连不上**（`CONNACK code 5` 未授权）。
-> 先把插件和所有设备的账号都写进 ACL，再重启，顺序反了会掉线。
+```
+① 建好所有账号
+② 写好 acl.conf（先把老账号 mqtt 的全量权限留着）
+③ 启用 customize + acl_file，重启 Mosquitto
+④ 确认 HA 和所有设备还在线
+⑤ 逐个把设备/插件切到新账号
+⑥ 全部切完后，删掉 acl.conf 里 mqtt 那段，再重启一次
+```
 
-## 验证
+顺序反了会掉线（`CONNACK code 5` 未授权）。
+
+---
+
+## 4. 切换插件账号
+
+Switchyard → **配置**：
+
+```
+mqtt_host: core-mosquitto
+mqtt_port: 1883
+mqtt_username: switchyard      ← 改这里
+mqtt_password: 你给 switchyard 设的密码
+public_url: https://ha.xiaosiqi.cn
+```
+
+保存 → **重启加载项** → 日志里应该有：
+
+```
+mqtt: connecting to core-mosquitto:1883 as switchyard
+```
+
+如果显示 `as <anonymous>` 或 code 5，说明账号没建好或 ACL 没给权限。
+
+---
+
+## 5. 切换设备账号
+
+圆屏：打开 `http://192.168.1.38/`（Basic Auth `admin/admin`）→
+
+```
+MQTT 用户名: orbis
+MQTT 密码:  你给 orbis 设的密码
+```
+
+保存后设备重启。串口应该看到：
+
+```
+I (3xxx) mqtt: mqtt start: mqtt://...:1883 (ESP_OK), device id 'orbis'
+I (3xxx) mqtt: connected to broker
+```
+
+如果看到：
+
+```
+W mqtt: MQTT user 'mqtt' != device id 'orbis' - per-device ACL will block this device
+```
+
+说明用户名还没改（这是固件新加的自检）。
+
+---
+
+## 6. 验证隔离
 
 ```bash
-# 设备账号只能发自己的主题（应该成功）
+# 1) 圆屏账号发自己的主题 → 成功
 mosquitto_pub -h mqtt.xiaosiqi.cn -p 1883 -u orbis -P '***' \
   -t switchyard/orbis/state -m '{"fw":"test"}'
 
-# 设备账号发别人的主题（应该被断开）
+# 2) 圆屏账号冒充别的设备 → 被断开
 mosquitto_pub -h mqtt.xiaosiqi.cn -p 1883 -u orbis -P '***' \
   -t switchyard/hall-screen/state -m '{"fw":"test"}'
 
-# 设备账号发 discovery（应该被断开）
+# 3) 圆屏账号伪造 HA 实体 → 被断开
 mosquitto_pub -h mqtt.xiaosiqi.cn -p 1883 -u orbis -P '***' \
   -t homeassistant/sensor/fake/config -m '{}'
+
+# 4) 插件账号发 discovery → 成功
+mosquitto_pub -h mqtt.xiaosiqi.cn -p 1883 -u switchyard -P '***' \
+  -t homeassistant/sensor/switchyard_test/fw/config -m '{"name":"t","unique_id":"t"}'
 ```
 
-## 相关
+预期：1 和 4 成功，2 和 3 报 `Connection Refused: not authorised` 或被服务端断开。
 
-- 设备 ID 的字符集限制：`a-z 0-9 - _`（最长 31 字符），固件保存时会校验、插件收到非法 ID 会直接忽略；
-- 设备 ID 改名流程见 [../switchyard/README.md](../switchyard/README.md)「改设备名」。
+---
+
+## 7. 出问题怎么回滚
+
+ACL 只在 Mosquitto 加载项里生效，回滚很快：
+
+1. 把 `/share/mosquitto/mosquitto.conf` 里的 `acl_file ...` 那行注释掉；
+2. 重启 Mosquitto 加载项 —— 立刻恢复成"任何账号可发任何主题"。
+
+所以**先别删老账号**，留作后路。
+
+---
+
+## 为什么值得做
+
+- broker 在公网（`mqtt.xiaosiqi.cn:1883`，明文）；
+- 一旦某台设备被拆走/固件被换，它拿到的密码只够污染**它自己**的主题；
+- 谁也伪造不了 `homeassistant/#`，也就不能凭空给 HA 加假设备或改别人的自动化。
