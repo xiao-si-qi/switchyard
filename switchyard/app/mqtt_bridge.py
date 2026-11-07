@@ -364,6 +364,7 @@ class DeviceStore:
                         "last_seen": dev["last_seen"],
                         "stale_seconds": self._stale_after,
                         "event": dev["event"],
+                        "meta": meta,      # 同上
                         "raw": state,
                     }
                 )
@@ -403,6 +404,7 @@ class DeviceStore:
                 "type": meta.get("type") or state.get("type", "unknown"),
                 "caps": self._caps(dev),
                 "fw": state.get("fw"),
+                "meta": meta,          # 中文名/型号在 meta 里，调用方要靠它
                 "last_seen": dev["last_seen"],
                 "raw": state,
             }
