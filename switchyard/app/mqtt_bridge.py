@@ -281,6 +281,10 @@ class DeviceStore:
             print("devices: save failed: %s" % exc, flush=True)
 
     def on_message(self, topic, payload):
+        # 空 payload = 某条 retained 被清除（我们自己清理时就会发空的），
+        # 不能当成设备上报，否则删掉的设备会立刻复活
+        if not payload:
+            return
         parts = topic.split("/")
         if len(parts) != 3 or parts[0] != "switchyard":
             return

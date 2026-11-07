@@ -149,3 +149,11 @@ MIT，见 [../LICENSE](../LICENSE)。
   防止主题注入和 `../` 路径穿越；
 - broker 目前是自家设备共用账号，**没有加 ACL**（设备都在自己手里，先图省事）。
   如果以后要防"设备互相冒充"，再按"每台设备一个账号 + `pattern readwrite switchyard/%u/#`"收紧。
+
+## 开发提示
+
+- 改版本号时，`switchyard/config.yaml` 的 `version:` 和 `app/main.py` 里的
+  `FALLBACK_VERSION` 要一起改（后者是 Supervisor 和文件都读不到时的兜底，
+  避免顶栏显示 `v?`）。
+- 空格键/Shift 之类的小技巧：顶栏「检查更新」普通点击 = 查最新版本；
+  **按住 Shift 点击** = 让 Supervisor 重新拉取加载项仓库（刷新商店缓存）。

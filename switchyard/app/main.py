@@ -66,31 +66,56 @@ def fw_paths(device_id):
     return folder, os.path.join(folder, "firmware.bin"), os.path.join(folder, "firmware.json")
 
 SLUG = "switchyard"
+# 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
+FALLBACK_VERSION = "0.7.5"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
 SELF_VERSION_CACHE = {"at": 0, "latest": "", "error": ""}
 
 
+VERSION_SOURCE = {"current": "?", "source": "unknown", "error": ""}
+
+
+def _version_from_yaml(path):
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("version:"):
+                    return line.split(":", 1)[1].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
+
+
 def addon_version():
-    """当前安装的版本：先问 Supervisor，再退到镜像里的 config.yaml。"""
+    """当前安装的版本：Supervisor → 镜像内 config.yaml → 源码目录。"""
+    if VERSION_SOURCE["source"] != "unknown":
+        return VERSION_SOURCE["current"]
+
+    errors = []
     try:
         info = supervisor_get("/addons/self/info")
         data = info.get("data") or info
         version = data.get("version")
         if version:
+            VERSION_SOURCE.update({"current": version, "source": "supervisor", "error": ""})
             return version
+        errors.append("supervisor: no version field")
     except Exception as exc:  # noqa: BLE001
-        print("version: supervisor lookup failed: %s" % exc, flush=True)
-    for path in ("/app/addon_config.yaml", os.path.join(APP_DIR, "..", "config.yaml")):
-        try:
-            with open(path, "r", encoding="utf-8") as fh:
-                for line in fh:
-                    if line.startswith("version:"):
-                        return line.split(":", 1)[1].strip().strip('"').strip("'")
-        except OSError:
-            continue
-    return "?"
+        errors.append("supervisor: %s" % exc)
+
+    for path in ("/app/addon_config.yaml", os.path.join(APP_DIR, "..", "config.yaml"),
+                 os.path.join(APP_DIR, "addon_config.yaml")):
+        version = _version_from_yaml(path)
+        if version:
+            VERSION_SOURCE.update({"current": version, "source": path, "error": " | ".join(errors)})
+            return version
+        errors.append("missing %s" % path)
+
+    VERSION_SOURCE.update({"current": FALLBACK_VERSION, "source": "builtin", "error": " | ".join(errors)})
+    print("version: using builtin %s (%s)" % (FALLBACK_VERSION, VERSION_SOURCE["error"]), flush=True)
+    return FALLBACK_VERSION
 
 
 def version_tuple(v):
@@ -300,6 +325,10 @@ class Handler(BaseHTTPRequestHandler):
                     "token": bool(TOKEN),
                     "mqtt": mqtt_status(),
                     "devices": STORE.device_count(),
+                    "version": addon_version(),
+                    "version_source": VERSION_SOURCE["source"],
+                    "version_error": VERSION_SOURCE["error"],
+                    "supervisor_token": bool(TOKEN),
                 }
             )
         elif path.endswith("/api/self_update"):
@@ -309,6 +338,7 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "ok": bool(latest),
                     "current": current,
+                    "current_source": VERSION_SOURCE["source"],
                     "latest": latest,
                     "update_available": bool(latest) and version_tuple(latest) > version_tuple(current),
                     "error": err,
