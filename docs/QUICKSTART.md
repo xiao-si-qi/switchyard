@@ -8,7 +8,7 @@
      → 起 MQTT（没配 host 时跳过）
      → 读 NVS 里的布局（上次 switchyard 下发的）
         有 → 直接建界面
-        没有 → 只显示 System 页，等 orbis/<id>/cfg
+        没有 → 只显示 System 页，等 switchyard/<id>/cfg
 ```
 
 ## 2. 首次配置（一次）
@@ -31,8 +31,8 @@
 设备连上 MQTT 后：
 
 ```
-orbis/<id>/availability  online (retained)   →   switchyard 设备列表出现这台设备
-orbis/<id>/state         每 30s (retained)    →  在线状态/固件/IP/信号/运行时长
+switchyard/<id>/availability  online (retained)   →   switchyard 设备列表出现这台设备
+switchyard/<id>/state         每 30s (retained)    →  在线状态/固件/IP/信号/运行时长
 ```
 
 **不需要在插件里登记**，注册表还会存到 `/data/devices.json`，插件重启不丢。
@@ -43,7 +43,7 @@ switchyard → 点设备卡片 → 「编辑本设备布局」→ 加卡片 → 
 
 ```
 POST /api/devices/<id>/layout
-   → retained 发布 orbis/<id>/cfg
+   → retained 发布 switchyard/<id>/cfg
    → 设备收到：应用界面 + 存 NVS + 回 event:cfg_applied
 ```
 

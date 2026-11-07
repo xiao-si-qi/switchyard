@@ -2,7 +2,7 @@
 
 Standard library only: no pip, no Flask, no requests. Device manager for ESP32 panels:
 layout editor, firmware upload and writes it into Home Assistant's www folder, so
-layouts are pushed over MQTT (`orbis/<id>/cfg`); firmware lives under
+layouts are pushed over MQTT (`switchyard/<id>/cfg`); firmware lives under
 `<www_dir>/<device_id>/firmware.bin`.
 
 Environment:
@@ -270,7 +270,7 @@ class Handler(BaseHTTPRequestHandler):
             if MQTT is not None and MQTT.connected:
                 # 清掉 broker 上该设备的 retained 消息，否则重启后又会"复活"
                 for suffix in ("state", "availability", "event", "cmd", "cfg"):
-                    if MQTT.publish("orbis/%s/%s" % (device_id, suffix), "", retain=True):
+                    if MQTT.publish("switchyard/%s/%s" % (device_id, suffix), "", retain=True):
                         cleared.append(suffix)
             self.send_json({"ok": True, "forgot": device_id, "retained_cleared": cleared})
             return
@@ -332,7 +332,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         payload = json.dumps(data, ensure_ascii=False)
-        topic = "orbis/%s/cfg" % device_id
+        topic = "switchyard/%s/cfg" % device_id
         ok = MQTT.publish(topic, payload, retain=True)
         self.send_json({"ok": ok, "topic": topic, "bytes": len(payload)}, 200 if ok else 500)
 
@@ -357,7 +357,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": False, "error": "MQTT not connected"}, 503)
             return
         cmd["seq"] = STORE.next_seq(device_id)
-        topic = "orbis/%s/cmd" % device_id
+        topic = "switchyard/%s/cmd" % device_id
         ok = MQTT.publish(topic, json.dumps(cmd, ensure_ascii=False), retain=True)
         self.send_json({"ok": ok, "seq": cmd["seq"], "topic": topic}, 200 if ok else 500)
 
@@ -417,7 +417,7 @@ def start_mqtt():
     global MQTT
     MQTT = mqtt_bridge.MqttClient(host, port, user, password, client_id="switchyard")
     MQTT.set_on_message(STORE.on_message)
-    MQTT.start(["orbis/+/state", "orbis/+/availability", "orbis/+/event"])
+    MQTT.start(["switchyard/+/state", "switchyard/+/availability", "switchyard/+/event"])
     print("mqtt: connecting to %s:%s as %s" % (host, port, user or "<anonymous>"), flush=True)
 
 

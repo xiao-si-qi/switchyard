@@ -6,7 +6,7 @@
 ## 1. 命名
 
 - `device_id`：小写、无空格，建议 `<房间>-<类型>`，例如 `hall-screen`、`kitchen-elink`、`inlet-water`；
-- 所有主题以 `orbis/` 为根（历史原因，保留；设备不分品牌都用这一个根）；
+- 所有主题以 `switchyard/` 为根（历史原因，保留；设备不分品牌都用这一个根）；
 - 设备**必须**在连上 broker 时发布一次 `state`（retained）和 `availability=online`（retained），
   并用 LWT 把 `availability` 设成 `offline`。
 
@@ -14,13 +14,13 @@
 
 | 主题 | 方向 | retain | 说明 |
 |---|---|---|---|
-| `orbis/<id>/state` | 设备 → HA | ✅ | JSON 状态快照，见 §3 |
-| `orbis/<id>/availability` | 设备 → HA | ✅ | `online` / `offline`，用 LWT 维护 |
-| `orbis/<id>/event` | 设备 → HA | ❌ | JSON 事件，见 §4 |
-| `orbis/<id>/cmd` | Switchyard → 设备 | ✅ | JSON 命令，见 §5 |
-| `orbis/<id>/cfg` | Switchyard → 设备 | ✅ | **配置下发（布局 JSON）**，见 §5.1 |
-| `orbis/<id>/ack` | 设备 → HA | ❌ | `{"seq":N,"ok":true,"err":"..."}` |
-| `orbis/<id>/meta` | 设备 → HA | ✅ | 静态能力声明，见 §6（可选） |
+| `switchyard/<id>/state` | 设备 → HA | ✅ | JSON 状态快照，见 §3 |
+| `switchyard/<id>/availability` | 设备 → HA | ✅ | `online` / `offline`，用 LWT 维护 |
+| `switchyard/<id>/event` | 设备 → HA | ❌ | JSON 事件，见 §4 |
+| `switchyard/<id>/cmd` | Switchyard → 设备 | ✅ | JSON 命令，见 §5 |
+| `switchyard/<id>/cfg` | Switchyard → 设备 | ✅ | **配置下发（布局 JSON）**，见 §5.1 |
+| `switchyard/<id>/ack` | 设备 → HA | ❌ | `{"seq":N,"ok":true,"err":"..."}` |
+| `switchyard/<id>/meta` | 设备 → HA | ✅ | 静态能力声明，见 §6（可选） |
 
 ## 3. state 快照
 
@@ -79,7 +79,7 @@
 布局这类"结构性配置"不走 cmd，而是单独一条 retained 主题：
 
 ```
-orbis/<id>/cfg      payload = 布局 JSON（和 /local/switchyard/layout.json 同一格式）
+switchyard/<id>/cfg      payload = 布局 JSON（和 /local/switchyard/layout.json 同一格式）
 ```
 
 - Switchyard 保存布局时 **retained 发布**到该设备专属的 `cfg` 主题；
@@ -126,11 +126,11 @@ Switchyard                     设备
 
 - 设备实体仍用标准 MQTT Discovery（`homeassistant/<component>/<node>/<object>/config`），
   这样 HA 的仪表盘、自动化、语音都能直接用；
-- Switchyard 只订阅 `orbis/+/state|availability|event`，**不代替** discovery；
+- Switchyard 只订阅 `switchyard/+/state|availability|event`，**不代替** discovery；
 - 没有 MQTT 的设备（比如现在走 HTTP 的圆屏）可以先保留 HTTP，Switchyard 按设备类型兼容。
 
 ## 9. 版本演进
 
 - v0.1（本文件）：state / availability / cmd / ack / event；
 - 后续新增字段必须可选，设备可忽略未知字段；
-- 破坏性变更走 `orbis/v2/...` 新根，不原地改语义。
+- 破坏性变更走 `switchyard/v2/...` 新根，不原地改语义。

@@ -43,8 +43,8 @@ Switchyard 提供一层统一的"设备管理"：
      圆屏 (常在线)        墨水屏 (电池唤醒)       水表 (低功耗)      更多设备…
 ```
 
-- 设备 → `orbis/<id>/state`（retained）+ `orbis/<id>/availability`（LWT）
-- Switchyard → `orbis/<id>/cmd`（retained + seq，设备醒来后执行）
+- 设备 → `switchyard/<id>/state`（retained）+ `switchyard/<id>/availability`（LWT）
+- Switchyard → `switchyard/<id>/cmd`（retained + seq，设备醒来后执行）
 - 二进制（固件、布局）不放 MQTT：设备拿 URL 自己去 HTTP 拉
 
 完整主题表、JSON 字段、seq 去重语义见 **[docs/PROTOCOL.md](docs/PROTOCOL.md)**。

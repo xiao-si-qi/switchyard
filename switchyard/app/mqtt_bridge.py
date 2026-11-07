@@ -231,7 +231,7 @@ class DeviceStore:
     """Keeps the last known state of every device, fed by retained MQTT topics.
 
     Devices register themselves the first time they publish anything on
-    orbis/<id>/...; the registry is persisted so the list survives add-on
+    switchyard/<id>/...; the registry is persisted so the list survives add-on
     restarts, and "online" also requires a recent message (a retained "online"
     from a device that is switched off must not look alive forever).
     """
@@ -278,7 +278,7 @@ class DeviceStore:
 
     def on_message(self, topic, payload):
         parts = topic.split("/")
-        if len(parts) != 3 or parts[0] != "orbis":
+        if len(parts) != 3 or parts[0] != "switchyard":
             return
         device_id, kind = parts[1], parts[2]
         with self._lock:

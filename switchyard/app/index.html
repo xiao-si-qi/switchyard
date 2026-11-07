@@ -79,7 +79,7 @@
         <strong style="font-size:14px">设备</strong>
         <span class="status" id="dev-count"></span>
       </div>
-      <p class="hint">设备连上 MQTT 后发布 <code>orbis/&lt;id&gt;/state</code>（retained）就会出现在这里；点卡片进入设备操作页。</p>
+      <p class="hint">设备连上 MQTT 后发布 <code>switchyard/&lt;id&gt;/state</code>（retained）就会出现在这里；点卡片进入设备操作页。</p>
       <div class="grid" id="devices" style="margin-top:12px"></div>
     </div>
   </section>
@@ -237,7 +237,7 @@ function populateDeviceSelect() {
   }
   sel.value = cfgDevice;
   $("cfg-device-hint").textContent = cfgDevice
-    ? "保存后 retained 发布到 orbis/" + cfgDevice + "/cfg（设备立即生效）"
+    ? "保存后 retained 发布到 switchyard/" + cfgDevice + "/cfg（设备立即生效）"
     : "布局直接下发到设备，不再写 /config/www 里的文件";
 }
 
@@ -262,7 +262,7 @@ function renderDevices() {
   const box = $("devices");
   box.innerHTML = "";
   if (!devices.length) {
-    box.innerHTML = "<div class='dev'><div class='meta'>还没有设备上报。设备发布 <code>orbis/&lt;id&gt;/state</code> 后就会出现。</div></div>";
+    box.innerHTML = "<div class='dev'><div class='meta'>还没有设备上报。设备发布 <code>switchyard/&lt;id&gt;/state</code> 后就会出现。</div></div>";
     return;
   }
   devices.forEach((d) => {
