@@ -731,9 +731,42 @@ async function loadBackground() {
       del.className = "danger";
       del.onclick = async (ev) => {
         ev.stopPropagation();
-        await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/background/" + im.slot, { method: "DELETE" });
+        const st = $("d-bg-status");
+        del.disabled = true;
+        del.textContent = "删除中…";
+        st.textContent = "正在删除 #" + im.slot + "…";
+        st.className = "status";
+
+        let resp;
+        try {
+          resp = await fetch(
+            "api/devices/" + encodeURIComponent(currentDevice) + "/background/" + im.slot,
+            { method: "DELETE" }
+          );
+        } catch (e) {
+          st.textContent = "删除失败: " + e;
+          st.className = "status err";
+          del.disabled = false;
+          del.textContent = "删除";
+          return;
+        }
+        const data = await resp.json();
+        if (!data.ok) {
+          st.textContent = "删除失败: " + (data.error || resp.status);
+          st.className = "status err";
+          del.disabled = false;
+          del.textContent = "删除";
+          return;
+        }
+
+        /* 从布局里去掉这张图并重新下发，然后立刻刷新列表（否则要手动刷新才消失） */
         const keep = bgImages().filter((u) => u.indexOf("/bg/" + im.slot + ".") < 0);
-        await publishBg(keep);
+        const ok = await publishBg(keep);
+        st.textContent = ok
+          ? ("已删除 #" + im.slot + "，剩 " + keep.length + " 张")
+          : "已删除文件，但布局下发失败";
+        st.className = ok ? "status ok" : "status err";
+        await loadBackground();
       };
       card.querySelector(".row").appendChild(del);
       box.appendChild(card);
