@@ -60,6 +60,36 @@
 {"ev":"button","key":"boot","press":"long"}
 ```
 
+## 4.5 背景图轮播（可选字段）
+
+布局 JSON 里可以带一个 `bg` 对象，设备端自己下载并解码：
+
+```json
+"bg": {
+  "images": [
+    "https://ha.xiaosiqi.cn/local/switchyard/orbis/bg/1.jpg",
+    "https://ha.xiaosiqi.cn/local/switchyard/orbis/bg/2.jpg"
+  ],
+  "interval": 60,
+  "dim": 35
+}
+```
+
+- `images`：按顺序轮播，最多 8 张；
+- `interval`：每张停留秒数（≥5，默认 60）；
+- `dim`：图片上叠一层黑色的百分比（0-80，默认 35，保证卡片文字可读）。
+
+设备侧行为：
+1. 首次下载后把 JPEG 存进 flash 的 `assets` FAT 分区（`/assets/bg_<i>.jpg` + `bg_<i>.url`）；
+2. 之后开机若 URL 未变，直接读缓存解码，不再走网络；
+3. 解码成 RGB565 贴在最底层，切换时 500ms 淡入。
+
+设备用 `meta.display` 声明屏幕规格（`w`/`h`/`formats`/`fit`），
+switchyard 按此裁剪与转换；目前设备只声明 `jpeg`（`esp_jpeg` 解码）。
+
+当前限制：TLS 记录必须用默认的 16 KB 输入缓冲（`CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=16384`），
+调小会导致下载大文件时报 `MBEDTLS_ERR_SSL_BAD_INPUT_DATA`。
+
 ## 5. cmd
 
 ```json
@@ -78,7 +108,37 @@
 - 设备本地保存"已执行的最后 seq"，**只执行 seq 更大的命令**，执行完发 `ack`，再清掉 retained（`retain=true, payload=""`）；
 - 这样"发命令时设备在睡觉"也不会丢：醒来第一件事就是拉到它。
 
-### 5.1 cfg：配置直接下发（推荐）
+### 4.5 背景图轮播（可选字段）
+
+布局 JSON 里可以带一个 `bg` 对象，设备端自己下载并解码：
+
+```json
+"bg": {
+  "images": [
+    "https://ha.xiaosiqi.cn/local/switchyard/orbis/bg/1.jpg",
+    "https://ha.xiaosiqi.cn/local/switchyard/orbis/bg/2.jpg"
+  ],
+  "interval": 60,
+  "dim": 35
+}
+```
+
+- `images`：按顺序轮播，最多 8 张；
+- `interval`：每张停留秒数（≥5，默认 60）；
+- `dim`：图片上叠一层黑色的百分比（0-80，默认 35，保证卡片文字可读）。
+
+设备侧行为：
+1. 首次下载后把 JPEG 存进 flash 的 `assets` FAT 分区（`/assets/bg_<i>.jpg` + `bg_<i>.url`）；
+2. 之后开机若 URL 未变，直接读缓存解码，不再走网络；
+3. 解码成 RGB565 贴在最底层，切换时 500ms 淡入。
+
+设备用 `meta.display` 声明屏幕规格（`w`/`h`/`formats`/`fit`），
+switchyard 按此裁剪与转换；目前设备只声明 `jpeg`（`esp_jpeg` 解码）。
+
+当前限制：TLS 记录必须用默认的 16 KB 输入缓冲（`CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=16384`），
+调小会导致下载大文件时报 `MBEDTLS_ERR_SSL_BAD_INPUT_DATA`。
+
+## 5.1 cfg：配置直接下发（推荐）
 
 布局这类"结构性配置"不走 cmd，而是单独一条 retained 主题：
 
