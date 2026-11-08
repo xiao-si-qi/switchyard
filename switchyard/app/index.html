@@ -260,6 +260,16 @@
         每页最多 4 个卡片（2×2）。点下方实体列表里的条目会加到当前页。
         type: <code>toggle</code> / <code>scene</code> / <code>sensor</code>。
       </p>
+      <div class="row hidden" id="d-rotation-row" style="margin-top:12px">
+        <span class="status">屏幕方向</span>
+        <select id="d-rotation">
+          <option value="0">0°（默认）</option>
+          <option value="90">90°</option>
+          <option value="180">180°</option>
+          <option value="270">270°</option>
+        </select>
+        <span class="status">随「下发到设备」一起生效</span>
+      </div>
       <div class="row" style="margin-top:12px">
         <button id="btn-cfg-read">从设备读取</button>
         <button id="btn-save-layout" class="primary">下发到设备</button>
@@ -599,6 +609,7 @@ function renderDetail() {
   // 布局面板只给上报了 layout 能力的设备
   const canLayout = has("layout");
   $("d-layout-panel").classList.toggle("hidden", !canLayout);
+  if ($("d-rotation-row")) $("d-rotation-row").classList.toggle("hidden", !has("rotation"));
   $("d-entities-panel").classList.toggle("hidden", !canLayout);
   $("d-log-panel").classList.toggle("hidden", !has("log"));
   $("d-bg-panel").classList.toggle("hidden", !has("background"));
@@ -1149,6 +1160,7 @@ async function loadLayout() {
   if (!layout.pages || !layout.pages.length) layout.pages = [{ name: "Devices", tiles: [] }];
   page = 0;
   renderLayout();
+  if ($("d-rotation") && layout.rotation) $("d-rotation").value = String(layout.rotation);
   $("layout-source").textContent =
     data.source === "device" ? "来源: 设备（MQTT 回读）"
     : data.source === "file" ? "来源: 本地副本"
@@ -1251,6 +1263,9 @@ async function searchEntities() {
 }
 
 $("btn-save-layout").onclick = async () => {
+  if ($("d-rotation") && (currentCaps || []).indexOf("rotation") >= 0) {
+    layout.rotation = Number($("d-rotation").value) || 0;
+  }
   if (!cfgDevice) { setLayoutStatus("先选择一台设备", "err"); return; }
   const url = "api/devices/" + encodeURIComponent(cfgDevice) + "/layout";
   setLayoutStatus("下发中…");

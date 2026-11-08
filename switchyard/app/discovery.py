@@ -33,7 +33,7 @@ MANUFACTURER = "Switchyard"
 
 # 每类设备的默认能力（设备没上报 meta 时使用）
 DEFAULT_CAPS = {
-    "screen": ["fw", "rssi", "uptime", "layout", "background", "ota", "reboot",
+    "screen": ["fw", "rssi", "uptime", "layout", "background", "rotation", "ota", "reboot",
                "brightness", "log", "online"],
     "meter": ["fw", "rssi", "uptime", "battery", "battery_v", "water", "climate",
               "leak", "comm_fault", "online", "valve", "ota", "reboot", "log"],
@@ -88,6 +88,7 @@ SPECS = {
                "availability": True},
     # 这些能力不生成实体，只决定设备页显示哪些配置面板
     "background": {"kind": "none"},
+    "rotation": {"kind": "none"},
 
     "log": {"kind": "sensor", "name": "最近错误", "icon": "mdi:alert-circle-outline",
             "diag": True, "diagnostic": True},
