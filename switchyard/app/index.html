@@ -107,7 +107,8 @@
   .tab { padding: 6px 12px; border-radius: 999px; background: var(--tab-bg); border: 1px solid var(--card-border);
          cursor: pointer; font-size: 13px; }
   .tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
-  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+           max-height: 420px; overflow-y: auto; }
   .tile { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 10px; min-height: 74px;
           display: flex; flex-direction: column; justify-content: space-between; box-shadow: var(--shadow); }
   .tile .row { display: flex; justify-content: space-between; align-items: start; gap: 6px; }
@@ -257,7 +258,7 @@
       <div class="tabs" id="tabs"></div>
       <div class="tiles" id="tiles"></div>
       <p class="hint">
-        每页最多 4 个卡片（2×2）。点下方实体列表里的条目会加到当前页。
+        每页最多 12 个卡片（2 列）；超过 4 个时设备上可上下滑动。点下方实体列表里的条目会加到当前页。
         type: <code>toggle</code> / <code>scene</code> / <code>sensor</code>。
       </p>
       <div class="row hidden" id="d-rotation-row" style="margin-top:12px">
@@ -1287,7 +1288,7 @@ async function searchEntities() {
     el.querySelector(".s").textContent = e.state + (e.unit ? " " + e.unit : "");
     el.onclick = () => {
       const cur = layout.pages[page];
-      if (cur.tiles.length >= 4) { setLayoutStatus("这页已经满了（4 个）", "err"); return; }
+      if (cur.tiles.length >= 12) { setLayoutStatus("这页已经满了（12 个）", "err"); return; }
       cur.tiles.push({ entity: e.entity_id, name: e.name, label: e.name, type: typeOf(e.entity_id) });
       renderLayout();
     };
