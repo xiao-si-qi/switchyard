@@ -71,13 +71,16 @@
     "https://ha.xiaosiqi.cn/local/switchyard/orbis/bg/2.jpg"
   ],
   "interval": 60,
-  "dim": 35
+  "dim": 35,
+  "card": 60
 }
 ```
 
 - `images`：按顺序轮播，最多 8 张；
 - `interval`：每张停留秒数（≥5，默认 60）；
-- `dim`：图片上叠一层黑色的百分比（0-80，默认 35，保证卡片文字可读）。
+- `dim`：图片上叠一层黑色的百分比（0-80，默认 35）；
+- `card`：卡片自身的黑色蒙版百分比（0-95，默认 60）。卡片因此比背景更暗，
+  形成"玻璃"效果；设 95 接近纯黑，设 0 则完全透明（只剩文字）。
 
 设备侧行为：
 1. 首次下载后把 JPEG 存进 flash 的 `assets` FAT 分区（`/assets/bg_<i>.jpg` + `bg_<i>.url`）；
@@ -119,13 +122,16 @@ switchyard 按此裁剪与转换；目前设备只声明 `jpeg`（`esp_jpeg` 解
     "https://ha.xiaosiqi.cn/local/switchyard/orbis/bg/2.jpg"
   ],
   "interval": 60,
-  "dim": 35
+  "dim": 35,
+  "card": 60
 }
 ```
 
 - `images`：按顺序轮播，最多 8 张；
 - `interval`：每张停留秒数（≥5，默认 60）；
-- `dim`：图片上叠一层黑色的百分比（0-80，默认 35，保证卡片文字可读）。
+- `dim`：图片上叠一层黑色的百分比（0-80，默认 35）；
+- `card`：卡片自身的黑色蒙版百分比（0-95，默认 60）。卡片因此比背景更暗，
+  形成"玻璃"效果；设 95 接近纯黑，设 0 则完全透明（只剩文字）。
 
 设备侧行为：
 1. 首次下载后把 JPEG 存进 flash 的 `assets` FAT 分区（`/assets/bg_<i>.jpg` + `bg_<i>.url`）；

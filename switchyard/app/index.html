@@ -217,8 +217,11 @@
         <span class="status">间隔</span>
         <input type="number" id="d-bg-interval" min="5" max="3600" value="60" style="width:80px">
         <span class="status">秒</span>
-        <span class="status">暗化</span>
+        <span class="status">背景暗化</span>
         <input type="number" id="d-bg-dim" min="0" max="80" value="35" style="width:70px">
+        <span class="status">%</span>
+        <span class="status">卡片暗化</span>
+        <input type="number" id="d-bg-card" min="0" max="95" value="60" style="width:70px">
         <span class="status">%</span>
         <button class="primary" id="d-bg-apply">应用并下发</button>
         <button id="d-bg-clear" class="danger">清空全部</button>
@@ -590,6 +593,7 @@ async function loadBackground() {
     if (layout && layout.bg) {
       $("d-bg-interval").value = layout.bg.interval || 60;
       $("d-bg-dim").value = (layout.bg.dim === undefined ? 35 : layout.bg.dim);
+      $("d-bg-card").value = (layout.bg.card === undefined ? 60 : layout.bg.card);
     }
     $("d-bg-status").textContent = "共 " + data.images.length + " 张";
     $("d-bg-status").className = "status";
@@ -639,8 +643,9 @@ async function publishBg(images) {
   layout = layout || { title: "Home", pages: [{ name: "Devices", tiles: [] }] };
   const interval = Number($("d-bg-interval").value) || 60;
   const dim = Number($("d-bg-dim").value) || 0;
+  const card = Number($("d-bg-card").value) || 0;
   if (images && images.length) {
-    layout.bg = { images: images, interval: interval, dim: dim };
+    layout.bg = { images: images, interval: interval, dim: dim, card: card };
   } else {
     delete layout.bg;
   }
@@ -826,6 +831,7 @@ async function loadLayout() {
   if (layout && layout.bg) {
     if ($("d-bg-interval")) $("d-bg-interval").value = layout.bg.interval || 60;
     if ($("d-bg-dim")) $("d-bg-dim").value = (layout.bg.dim === undefined ? 35 : layout.bg.dim);
+    if ($("d-bg-card")) $("d-bg-card").value = (layout.bg.card === undefined ? 60 : layout.bg.card);
   }
 }
 
