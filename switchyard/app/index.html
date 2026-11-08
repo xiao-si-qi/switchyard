@@ -270,6 +270,7 @@ function route() {
     currentDevice = decodeURIComponent(hash.slice(4));
     cfgDevice = currentDevice;
     $("view-detail").classList.remove("hidden");
+    lastRenderedDevice = null;   /* 进入/切换设备：让 renderDetail 按"切设备"处理一次 */
     renderDetail();
     loadDevices(true);
     loadDeviceFirmware(currentDevice);
@@ -462,7 +463,9 @@ function renderDetail() {
   $("d-log-panel").classList.toggle("hidden", !has("log"));
   $("d-bg-panel").classList.toggle("hidden", !has("background"));
   if (has("background") && switchedDevice) loadBackground();
-  if (canLayout) {
+  if (canLayout && switchedDevice) {
+    /* 实体列表只在进入/切换设备时拉一次；5 秒轮询不再拉
+       （HA 的 /api/states 接近 1 MB，定时拉会白耗流量） */
     searchEntities();
   }
   $("d-caps").textContent = currentCaps.length ? "能力: " + currentCaps.join(" / ") : "能力: 未上报（按类型默认）";
@@ -672,17 +675,6 @@ $("btn-cfg-read").onclick = async () => {
 
 $("btn-back").onclick = () => {
   if ($("d-action-status")) $("d-action-status").textContent = "";
-  // 只有在**切换设备**时才清空复用面板；同一台设备的 5 秒轮询不能清，
-  // 否则刚抓到的日志/背景列表会被下一次轮询抹掉。
-  const switchedDevice = lastRenderedDevice !== currentDevice;
-  lastRenderedDevice = currentDevice;
-  if (switchedDevice) {
-    if ($("d-log-text")) { $("d-log-text").textContent = ""; $("d-log-text").classList.add("hidden"); }
-    if ($("d-log-status")) { $("d-log-status").textContent = ""; $("d-log-status").className = "status"; }
-    if ($("d-bg-status")) { $("d-bg-status").textContent = ""; $("d-bg-status").className = "status"; }
-    if ($("d-bg-list")) $("d-bg-list").innerHTML = "";
-    if ($("d-fw-info")) $("d-fw-info").textContent = "读取中…";
-  }
   location.hash = "#/";
 };
 $("d-reboot").onclick = () => sendCmd({ cmd: "reboot" });
