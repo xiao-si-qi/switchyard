@@ -19,7 +19,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, send_from_directory, jsonify, request, send_file
 
 import discovery
 import mqtt_bridge
@@ -67,7 +67,7 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 # 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
-FALLBACK_VERSION = "0.12.2"
+FALLBACK_VERSION = "0.13.0"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
@@ -680,6 +680,28 @@ def api_device_background_delete(device_id, slot):
         if os.path.exists(path):
             os.remove(path)
     return jsonify({"ok": True, "device": device_id, "slot": slot})
+
+
+@app.get("/local/<path:sub>")
+def serve_www(sub):
+    """独立运行时自己提供 /local/ 静态文件（HA 里由 HA 提供，用不到这条）。
+
+    bg_url() 生成的地址是 <public_url>/local/<www 目录名>/<设备>/bg/N.jpg，
+    这里把前缀剥掉后从 WWW_DIR 读文件。
+    """
+    parts = sub.split("/", 1)
+    if len(parts) != 2 or parts[0] != os.path.basename(WWW_DIR.rstrip("/")):
+        return jsonify({"ok": False, "error": "not found"}), 404
+    return send_from_directory(WWW_DIR, parts[1], max_age=86400)
+
+
+@app.get("/api/devices/<device_id>/display")
+def api_device_display(device_id):
+    """设备声明的屏幕规格（面板用它决定裁剪尺寸与编码格式）。"""
+    err = bad_id(device_id)
+    if err:
+        return err
+    return jsonify({"ok": True, "device": device_id, "display": device_display(device_id)})
 
 
 @app.delete("/api/devices/<device_id>/background")

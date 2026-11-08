@@ -1,7 +1,9 @@
 # Flask 版后端。
 # 国内网络：pip / apk 都按「阿里云 → 中科大 → 清华」的顺序逐个尝试，
 # 任一源可用就继续；全部失败才装编译工具链走官方源（几乎不会走到）。
-FROM python:3.12-alpine
+# 默认用 Docker Hub；本地网络拉不动时可以用 --build-arg BASE_IMAGE=<镜像加速器>/library/python:3.12-alpine
+ARG BASE_IMAGE=python:3.12-alpine
+FROM ${BASE_IMAGE}
 
 ARG PYPI_INDEXES="https://mirrors.aliyun.com/pypi/simple https://pypi.mirrors.ustc.edu.cn/simple https://pypi.tuna.tsinghua.edu.cn/simple"
 ARG APK_MIRRORS="https://mirrors.aliyun.com/alpine https://mirrors.ustc.edu.cn/alpine https://mirrors.tuna.tsinghua.edu.cn/alpine"
