@@ -291,6 +291,34 @@
       <div class="entity-list" id="entities"></div>
     </div>
 
+    <div class="panel hidden" id="d-voice-panel">
+      <div class="row">
+        <strong style="font-size:14px">小智 AI 语音</strong>
+        <span class="status" id="d-voice-status"></span>
+      </div>
+      <p class="hint">
+        开启后设备会多一个「小智 AI」页，并按下面的服务端地址连接小智服务端。
+        地址填小智的 <b>OTA / 发现接口</b>：官方是
+        <code>https://api.tenclass.net/xiaozhi/ota/</code>，自建服务端一般是
+        <code>http://&lt;NAS地址&gt;:8003/xiaozhi/ota/</code>。
+      </p>
+      <div class="row" style="margin-top:10px">
+        <label style="display:flex;align-items:center;gap:6px">
+          <input type="checkbox" id="d-voice-on"> 启用语音
+        </label>
+        <button id="d-voice-official">用官方地址</button>
+        <button id="d-voice-test">测试连接</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="d-voice-url" style="flex:1;min-width:240px"
+               placeholder="https://api.tenclass.net/xiaozhi/ota/">
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="d-voice-save">应用并下发</button>
+      </div>
+      <p class="hint" id="d-voice-result"></p>
+    </div>
+
     <div class="panel hidden" id="d-bg-panel">
       <div class="row">
         <strong style="font-size:14px">背景图（轮播）</strong>
@@ -611,10 +639,12 @@ function renderDetail() {
   const canLayout = has("layout");
   $("d-layout-panel").classList.toggle("hidden", !canLayout);
   if ($("d-rotation-row")) $("d-rotation-row").classList.toggle("hidden", !has("rotation"));
+  if ($("d-voice-panel")) $("d-voice-panel").classList.toggle("hidden", !has("voice"));
   $("d-entities-panel").classList.toggle("hidden", !canLayout);
   $("d-log-panel").classList.toggle("hidden", !has("log"));
   $("d-bg-panel").classList.toggle("hidden", !has("background"));
   if (has("background") && switchedDevice) loadBackground();
+  if (has("voice") && switchedDevice) loadVoicePanel();
   if (canLayout && switchedDevice) {
     /* 实体列表只在进入/切换设备时拉一次；5 秒轮询不再拉
        （HA 的 /api/states 接近 1 MB，定时拉会白耗流量） */
@@ -810,6 +840,74 @@ async function publishBg(images) {
   }
   return true;
 }
+
+/* ---------------- 小智 AI 语音 ---------------- */
+
+const VOICE_OFFICIAL = "https://api.tenclass.net/xiaozhi/ota/";
+
+function voiceCfg() {
+  return (layout && layout.voice) || {};
+}
+
+function loadVoicePanel() {
+  const cfg = voiceCfg();
+  $("d-voice-on").checked = !!cfg.enabled;
+  $("d-voice-url").value = cfg.endpoint || VOICE_OFFICIAL;
+  $("d-voice-status").textContent = cfg.enabled ? "已启用" : "未启用";
+  $("d-voice-status").className = "status" + (cfg.enabled ? " ok" : "");
+  $("d-voice-result").textContent = "";
+}
+
+$("d-voice-official").onclick = () => {
+  $("d-voice-url").value = VOICE_OFFICIAL;
+  $("d-voice-result").textContent = "已填入官方地址";
+};
+
+$("d-voice-test").onclick = async () => {
+  const url = ($("d-voice-url").value || "").trim();
+  const out = $("d-voice-result");
+  if (!url) { out.textContent = "先填地址"; return; }
+  out.textContent = "测试中…";
+  try {
+    const resp = await fetch("api/voice/test?url=" + encodeURIComponent(url));
+    const data = await resp.json();
+    if (!data.ok) {
+      out.textContent = "❌ " + (data.error || "失败");
+      return;
+    }
+    out.textContent = "✅ HTTP " + data.status +
+      (data.websocket ? " · WebSocket: " + data.websocket : "") +
+      (data.firmware ? " · 固件: " + data.firmware : "") +
+      (data.websocket || data.firmware ? "" : " · 返回内容里没找到 websocket 字段，可能不是小智服务端");
+  } catch (e) {
+    out.textContent = "❌ " + e;
+  }
+};
+
+$("d-voice-save").onclick = async () => {
+  if (!currentDevice) return;
+  const url = ($("d-voice-url").value || "").trim();
+  if (url && !/^https?:\/\//.test(url)) {
+    $("d-voice-result").textContent = "❌ 地址必须以 http:// 或 https:// 开头";
+    return;
+  }
+  layout = layout || { title: "Home", pages: [{ name: "Devices", tiles: [] }] };
+  layout.voice = { enabled: !!$("d-voice-on").checked, endpoint: url || VOICE_OFFICIAL };
+
+  const resp = await fetch("api/devices/" + encodeURIComponent(currentDevice) + "/layout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(layout),
+  });
+  const data = await resp.json();
+  if (!data.ok) {
+    $("d-voice-result").textContent = "❌ 下发失败: " + data.error;
+    return;
+  }
+  $("d-voice-status").textContent = layout.voice.enabled ? "已启用" : "未启用";
+  $("d-voice-status").className = "status" + (layout.voice.enabled ? " ok" : "");
+  $("d-voice-result").textContent = "✅ 已下发，设备重启界面后生效";
+};
 
 /* ---------------- 裁剪弹窗 ---------------- */
 

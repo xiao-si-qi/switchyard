@@ -16,6 +16,8 @@ import re
 import hashlib
 import tempfile
 import threading
+import random
+import uuid
 import time
 import urllib.parse
 import urllib.request
@@ -693,6 +695,77 @@ def serve_www(sub):
     if len(parts) != 2 or parts[0] != os.path.basename(WWW_DIR.rstrip("/")):
         return jsonify({"ok": False, "error": "not found"}), 404
     return send_from_directory(WWW_DIR, parts[1], max_age=86400)
+
+
+@app.get("/api/voice/test")
+def api_voice_test():
+    """探测小智服务端地址。
+
+    小智设备是这样问 OTA/发现接口的（注意 Client-Id 必须是合法 UUID，否则官方返回
+    "Invalid client ID"）：
+      POST <endpoint>
+      headers: Content-Type/User-Agent/Device-Id/Client-Id/Activation-Version
+      body:    {"version":2,"mac_address":...,"uuid":<同一个UUID>,
+                "application":{...},"board":{...}}
+    返回里带 websocket.url（自建服务端还会带 mqtt/固件信息）。
+    探测失败时退化成 GET，把服务端原话带回来给用户看。
+    """
+    url = (request.args.get("url") or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return jsonify({"ok": False, "error": "地址必须是 http:// 或 https:// 开头"}), 400
+
+    client_uuid = str(uuid.uuid4())
+    device_id = "02:00:%02x:%02x:%02x:%02x" % tuple(random.randrange(256) for _ in range(4))
+    body = json.dumps({
+        "version": 2,
+        "mac_address": device_id,
+        "uuid": client_uuid,
+        "application": {"name": "switchyard", "version": addon_version(),
+                        "compile_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+        "board": {"type": "switchyard-probe", "name": "probe"},
+    }).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "switchyard/" + addon_version(),
+        "Device-Id": device_id,
+        "Client-Id": client_uuid,
+        "Activation-Version": "1",
+    }
+
+    notes = []
+    for method, payload in (("POST", body), ("GET", None)):
+        try:
+            req = urllib.request.Request(url, data=payload, headers=headers, method=method)
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                raw = resp.read(64 * 1024)
+                status = resp.status
+                ctype = resp.headers.get("Content-Type", "")
+        except Exception as exc:  # noqa: BLE001
+            notes.append("%s 失败: %s" % (method, exc))
+            continue
+
+        text = raw.decode("utf-8", "replace").strip()
+        ws_url, fw_version, server_note = "", "", ""
+        try:
+            data = json.loads(text)
+            ws = data.get("websocket") or {}
+            if isinstance(ws, dict):
+                ws_url = ws.get("url") or ws.get("endpoint") or ""
+            fw = data.get("firmware") or {}
+            if isinstance(fw, dict):
+                fw_version = fw.get("version") or ""
+            server_note = data.get("message") or data.get("error") or ""
+        except Exception:  # noqa: BLE001
+            server_note = text[:120]
+
+        if status < 400:
+            return jsonify({"ok": True, "status": status, "method": method,
+                            "content_type": ctype, "websocket": ws_url,
+                            "firmware": fw_version, "note": server_note,
+                            "bytes": len(raw)})
+        notes.append("%s HTTP %d: %s" % (method, status, server_note or text[:120]))
+
+    return jsonify({"ok": False, "error": "；".join(notes) or "连接失败"}), 200
 
 
 @app.get("/api/devices/<device_id>/display")
