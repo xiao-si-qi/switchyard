@@ -1,6 +1,8 @@
 # Switchyard（Home Assistant 加载项）
 
-ESP32 设备的统一上位机。当前版本（0.4.2）包含：
+[![在 Home Assistant 中添加此加载项仓库](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fxiao-si-qi%2Fswitchyard)
+
+ESP32 设备的统一上位机。包含：
 
 1. **设备台账**：设备往 `switchyard/<id>/state` 发一次就自动注册，显示在线/固件/信号/电量；
 2. **按设备下发布局**：编辑页面与卡片，**retained 发布到 `switchyard/<id>/cfg`**，
