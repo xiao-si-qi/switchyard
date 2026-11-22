@@ -69,7 +69,7 @@ def fw_paths(device_id):
 
 SLUG = "switchyard"
 # 与 config.yaml 的 version 保持一致（作为最后兜底，避免界面显示 v?）
-FALLBACK_VERSION = "0.15.0"
+FALLBACK_VERSION = "0.15.1"
 REPO = "xiao-si-qi/switchyard"
 # raw.githubusercontent.com 有 CDN 缓存（会返回旧版本号），改用 GitHub API
 CONFIG_URL = "https://api.github.com/repos/%s/contents/switchyard/config.yaml?ref=main" % REPO
@@ -301,6 +301,10 @@ def validate_layout(data):
 # Flask app
 # ---------------------------------------------------------------------------
 app = Flask(__name__, static_folder=None)
+
+# 在**读取请求体之前**就拒绝过大的请求（固件 4MB / 背景图最大 4MB，留足余量）。
+# 否则 request.get_data() 会先把整个 body 读进内存，容器可能被 OOM 杀掉。
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 INGRESS_RE = re.compile(r"^(/api/hassio_ingress/[^/]+)(?=/|$)")
 
@@ -636,6 +640,12 @@ def api_device_background_upload(device_id):
         return jsonify({"ok": False,
                         "error": "设备只支持 %s" % "/".join(disp["formats"])}), 400
 
+    # 先按设备尺寸算一个上限，在读完整个 body 之前拒绝（rgb565 是精确值，jpeg 给 4MB 余量）
+    limit = max(disp["w"] * disp["h"] * 2, 4 * 1024 * 1024)
+    if request.content_length and request.content_length > limit:
+        return jsonify({"ok": False,
+                        "error": "图片过大（上限 %d 字节）" % limit}), 413
+
     raw = request.get_data(cache=False)
     if not raw:
         return jsonify({"ok": False, "error": "empty body"}), 400
@@ -867,17 +877,32 @@ def send_device_cmd(device_id, cmd):
 
 
 def discovery_loop():
-    """每 5 分钟补发一次（broker 没开持久化时，重启后实体配置会丢）。"""
+    """补发 discovery 配置：连接建立/重连之后各跑一次，平时靠 retained 维持。
+
+    以前是每 5 分钟无条件全量重发（含"未声明能力"的清空），设备一多就是成倍的
+    无效 MQTT 流量；retained 消息本来就会留在 broker 上，只有会话丢失（broker
+    没开持久化、重启过）才需要补。这里用 connects 计数判断是否刚连上/重连过。
+    """
+    last_connects = -1
     while True:
-        time.sleep(300)
+        time.sleep(5)
         if MQTT is None or not MQTT.connected:
             continue
-        for dev in STORE.snapshot():
-            state = dict(dev["raw"])
-            meta = dev.get("meta") or {}
-            state["name"] = meta.get("name") or dev["id"]
-            state["model"] = meta.get("model")
-            discovery.publish_device(MQTT, dev["id"], state, dev.get("caps"))
+        connects = getattr(MQTT, "connects", 0)
+        if connects == last_connects:
+            continue            # 同一连接，不用重发
+        last_connects = connects
+        try:
+            for dev in STORE.snapshot():
+                state = dict(dev["raw"])
+                meta = dev.get("meta") or {}
+                state["name"] = meta.get("name") or dev["id"]
+                state["model"] = meta.get("model")
+                discovery.publish_device(MQTT, dev["id"], state, dev.get("caps"))
+            print("discovery: 连接已建立（第 %d 次），已补发全部实体配置" % connects, flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print("discovery: 补发失败: %s" % exc, flush=True)
+            last_connects = -1   # 下一轮重试
 
 
 def start_mqtt():
@@ -902,8 +927,7 @@ def mqtt_status():
 
 
 def main():
-    start_mqtt()
-    threading.Thread(target=discovery_loop, daemon=True).start()
+    start_mqtt()          # 里面已经启动了 discovery_loop，别重复启
     print("switchyard %s listening on :%d (www_dir=%s)" % (addon_version(), PORT, WWW_DIR), flush=True)
     app.run(host="0.0.0.0", port=PORT, threaded=True, use_reloader=False, debug=False)
 

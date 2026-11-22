@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 data/
 .test/
+
+# 本地代码审查记录，不发布
+docs/CODE_REVIEW.md

@@ -213,6 +213,8 @@ def publish_device(mqtt, device_id, state, caps=None):
     for cap, spec in SPECS.items():
         if cap in declared:
             continue
+        if spec["kind"] == "none":
+            continue          # 纯 UI 能力（background/rotation/voice）不生成实体
         obj = spec.get("obj", cap)
         topic = "%s/%s/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, spec["kind"], device_id, obj)
         mqtt.publish(topic, "", retain=True)

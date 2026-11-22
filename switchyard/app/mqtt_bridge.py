@@ -1,7 +1,8 @@
 """Minimal MQTT 3.1.1 client + device store (standard library only).
 
-Only the subset Switchyard needs: CONNECT, SUBSCRIBE (QoS 0), PUBLISH (QoS 0),
-PINGREQ. No external dependencies, so the add-on image keeps building without pip.
+Only the subset Switchyard needs: CONNECT, SUBSCRIBE (QoS 0), PUBLISH (QoS 0/1,
+QoS 1 is acknowledged), PINGREQ/PINGRESP (liveness). No external dependencies,
+so the add-on image keeps building without pip.
 """
 
 import json
@@ -50,6 +51,8 @@ class MqttClient:
         self.password = password or ""
         self.client_id = client_id
         self.keepalive = keepalive
+        self.connects = 0            # 每次连上 +1，供 discovery 判断"重连后需要补发"
+        self._last_pingresp = time.time()
 
         self.connected = False
         self.last_error = ""
@@ -157,6 +160,8 @@ class MqttClient:
         self._sock = sock
         self.connected = True
         self.last_error = ""
+        self._last_pingresp = time.time()
+        self.connects += 1
 
         # subscribe (QoS 0)
         sub_body = struct.pack("!H", self._packet_id)
@@ -164,6 +169,15 @@ class MqttClient:
             sub_body += _encode_str(t) + b"\x00"
         sub = bytes([SUBSCRIBE << 4 | 0x02]) + _encode_len(len(sub_body)) + sub_body
         sock.sendall(sub)
+
+        # 必须校验 SUBACK：broker 有 ACL 时会拒绝部分主题，而客户端如果只看
+        # connected 就会"看起来连上了、实际收不到任何消息"。
+        first, suback = self._read_packet(sock)
+        if first >> 4 != SUBACK:
+            raise RuntimeError("subscribe 后收到意外报文 %d（应为 SUBACK）" % (first >> 4))
+        codes = suback[2:]
+        if any(c == 0x80 for c in codes):
+            raise RuntimeError("broker 拒绝了部分主题订阅（返回 0x80，检查 ACL）")
 
     def _loop(self):
         sock = self._sock
@@ -181,6 +195,13 @@ class MqttClient:
                 ptype = first >> 4
                 if ptype == PUBLISH:
                     self._handle_publish(first, body)
+                elif ptype == PINGRESP:
+                    self._last_pingresp = time.time()
+
+            # 半开连接（对端掉电、NAT 超时）时读会一直超时，必须靠 PINGRESP 判定死亡
+            if time.time() - self._last_pingresp > self.keepalive * 2:
+                raise RuntimeError("ping timeout: broker 无响应（连接可能已半开）")
+
             if time.time() - last_ping > self.keepalive * 0.7:
                 with self._send_lock:
                     sock.sendall(bytes([PINGREQ << 4, 0]))
@@ -193,7 +214,11 @@ class MqttClient:
         tlen = struct.unpack("!H", body[:2])[0]
         topic = body[2:2 + tlen].decode("utf-8", "replace")
         rest = body[2 + tlen:]
+        packet_id = None
         if qos > 0:
+            if len(rest) < 2:
+                return
+            packet_id = struct.unpack("!H", rest[:2])[0]
             rest = rest[2:]
         payload = rest.decode("utf-8", "replace")
         self.messages += 1
@@ -203,6 +228,15 @@ class MqttClient:
                 self._on_message(topic, payload)
             except Exception as exc:  # noqa: BLE001
                 self.last_error = "handler: %s" % exc
+
+        # QoS 1 必须回 PUBACK，否则 broker 会不断重发，最终把客户端踢下线
+        if packet_id is not None and self._sock is not None:
+            try:
+                with self._send_lock:
+                    self._sock.sendall(bytes([PUBACK << 4, 0x02]) +
+                                       struct.pack("!H", packet_id))
+            except OSError:
+                pass
 
     @staticmethod
     def _read_exact(sock, n):
