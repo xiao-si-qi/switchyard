@@ -1,6 +1,6 @@
 # 现在的启动流程（MQTT-only 版）
 
-[![在 Home Assistant 中添加此加载项仓库](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fxiao-si-qi%2Fswitchyard)
+[![在 Home Assistant 中添加此加载项仓库](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fxiao-si-qi%2Fswitchyard) [![打开加载项商店](https://my.home-assistant.io/badges/supervisor_store.svg)](https://my.home-assistant.io/redirect/supervisor_store/) [![打开 Switchyard 加载项](https://my.home-assistant.io/badges/supervisor_addon.svg)](https://my.home-assistant.io/redirect/supervisor_addon/?slug=switchyard)
 
 
 ## 1. 固件启动

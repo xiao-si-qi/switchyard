@@ -73,9 +73,10 @@ Switchyard 提供一层统一的"设备管理"：
 
 ## 安装（Home Assistant 加载项）
 
-[![在 Home Assistant 中添加此加载项仓库](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fxiao-si-qi%2Fswitchyard)
+[![在 Home Assistant 中添加此加载项仓库](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fxiao-si-qi%2Fswitchyard) [![打开加载项商店](https://my.home-assistant.io/badges/supervisor_store.svg)](https://my.home-assistant.io/redirect/supervisor_store/) [![打开 Switchyard 加载项](https://my.home-assistant.io/badges/supervisor_addon.svg)](https://my.home-assistant.io/redirect/supervisor_addon/?slug=switchyard)
 
-点上面的徽章会直接打开你的 HA 并填好仓库地址（需要 HA 能从浏览器访问到）。
+三个徽章分别对应：**添加仓库**（首次安装）→ **打开加载项商店**（找到 Switchyard 安装）→ **打开加载项**（装好后直接进面板）。
+都依赖 `my.home-assistant.io`，需要浏览器能访问到你的 HA；加载项徽章里的 `slug=switchyard` 是默认安装名，装好后若显示找不到，把 URL 里的 `/hassio/addon/<slug>` 替换成实际值即可。
 
 手动方式：
 
