@@ -42,7 +42,7 @@ Switchyard 提供一层统一的"设备管理"：
 | [**orbis-w518**](https://github.com/xiao-si-qi/orbis-w518) | GUITION 太极小派 **JC3636W518**<br>ESP32-S3 · 1.85" 360×360 圆屏 | 触屏控制屏 | `layout` `background` `rotation` `voice` `brightness` `ota` `log`<br>JSON 布局、背景图轮播、四方向、小智语音页、滑动翻页 |
 | [**orbis-f118**](https://github.com/xiao-si-qi/orbis-f118) | GUITION **JC3636F118C**<br>ESP32-S31 · 1.65" 圆屏 + **旋钮** | 旋钮控制屏 | 与 w518 同协议；弧形刻度盘调灯/空调/风扇；<br>额外支持 `switchyard/<id>/shot` 截图回传 |
 | **ls2k0300**<sup>†</sup> | 龙芯 **2K0300**（LoongArch64，久久派） | 主机类设备 | Go 写的 `switchyard-agent`：主机指标（CPU/内存/磁盘）、USB 事件、<br>远程命令（`reboot`/`ota`/`cfg`/`log`/`set`）、日志回传 |
-| [**esp32-water-meter**](https://github.com/xiao-si-qi/esp32-water-meter) | ESP32-C3 + RS485 超声水表 | 传感器 / 执行器 | `water` `valve` `battery` `climate` `leak` `comm_fault`<br>累计水量、开关阀门、水电量、漏水与通信故障告警 |
+| [**esp32-water-meter**](https://github.com/xiao-si-qi/esp32-water-meter) | ESP32-C3 + RS485 电子远传水表 | 传感器 / 执行器 | `water` `valve` `battery` `climate` `leak` `comm_fault`<br>累计水量、开关阀门、水电量、漏水与通信故障告警 |
 
 两块圆屏的**布局协议、MQTT 约定、HA 通道完全一致**，布局可以在同一个面板里互通编辑；
 水表和主机类设备复用同一套 `state / meta / cmd / cfg / log` 语义。
