@@ -46,10 +46,7 @@ def entity_topic(component, device_id, obj):
 
 
 def cleanup_entities(mqtt, device_id, ha_entities):
-    """按设备自报的 ha_entities 清空 retained 配置，返回清除条数。
-
-    设备没自报（老固件或手工设备）时返回 0——那种情况只能在 HA 界面里手动删。
-    """
+    """按设备自报的 ha_entities 清空 retained 配置，返回清除条数。"""
     if mqtt is None or not mqtt.connected:
         return 0
     removed = 0

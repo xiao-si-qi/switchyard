@@ -81,65 +81,48 @@ HA 的 Mosquitto 加载项用 Home Assistant 的账号做认证（不是 anonymo
 
 旁边就是「下发 OTA」，两步就能完成升级。
 
-### 实体完全由 caps 决定（0.9.x）
+### 实体由设备自己注册（0.16）
 
-插件**只看设备声明的能力**，不看 `state` 里碰巧有什么字段——设备换字段名、少报一次
-值，都不会让 HA 里的实体飘。词表：
+插件**不生成任何 HA 实体**。设备连上 broker 后自己发标准 MQTT Discovery：
 
-| cap | 生成的实体 |
-|---|---|
-| `fw` `rssi` `uptime` | sensor：固件 / 信号 / 运行时长 |
-| `battery` `battery_v` | sensor：电量 % / 电池电压 V |
-| `water` | sensor：累计水量（m³）|
-| `climate` | sensor：温度 + 湿度 |
-| `leak` `comm_fault` | binary_sensor：漏水 / 通信故障 |
-| `online` | binary_sensor：在线（connectivity）|
-| `valve` | switch：阀门（`{"cmd":"valve","open":true/false}`）|
-| `reboot` | button：重启 |
-| `ota` | button：检查更新 |
-| `brightness` | number：亮度 |
-| `log` | 设备页「抓日志」按钮 + HA「最近错误」sensor（diag）|
-| `layout` | 不是实体，是设备页「布局」面板的开关 |
-
-设备没上报 `meta` 时按 `type` 用默认能力（`screen` / `meter` / `elink` / `unknown`）。
-设备改过 caps 后，插件会把不再声明的实体发布成空 retained 清掉，不留孤儿。
-
-### 设备能力声明（caps，0.7.0）
-
-设备上线时发一次 retained 的 `switchyard/<id>/meta`，告诉插件它会什么：
-
-```json
-{"type": "screen", "caps": ["layout", "ota", "reboot", "brightness"],
- "display": {"w": 360, "h": 360}, "fw": "0.2.0"}
+```
+homeassistant/<component>/switchyard_<id>/<object>/config   ← 设备发，retained
+switchyard/<id>/state                                       ← 设备发，实体直接读它
 ```
 
-插件按 `caps` 决定发哪些实体/显示哪些按钮：
+所以插件挂了、升级坏了，HA 里已有的实体和自动化都不受影响，只是插件的台账页打不开。
+插件退出这条路径是有意为之——它不该成为一个"单点"，把新设备的实体注册卡住。
 
-| caps | 效果 |
+**插件只做 HA 做不到的三件事：**
+
+| 能力 | 说明 |
 |---|---|
-| `reboot` | HA `button.重启` + 详情页「重启」 |
-| `ota` | HA `button.检查更新` + 详情页「下发 OTA」 |
-| `brightness` | HA `number.亮度` + 详情页亮度输入 |
-| `layout` | 详情页「编辑本设备布局」 |
+| 设备台账 | 设备列表、在线状态、指标、删除设备 |
+| 固件分发 | 上传 `.bin`、版本比对、下发 `cmd:ota` |
+| 配置下发 | 布局 / 背景图 / 语音地址 |
 
-没上报 `meta` 的设备按 `type` 用默认能力（`screen` 全功能，其它 `ota`+`reboot`），
-所以老设备不受影响；详情页会显示一行「能力: …」。
+设备在 `switchyard/<id>/meta` 里声明三样东西：
 
-### 自动变成 HA 实体（MQTT Discovery）
+```json
+{
+  "type": "screen", "name": "圆屏", "model": "JC3636W518",
+  "caps": ["ota", "layout", "background", "voice", "rotation"],
+  "metrics": [{"key": "rssi", "name": "信号", "unit": "dBm"}],
+  "ha_entities": [{"component": "sensor", "object": "rssi"}]
+}
+```
 
-每台注册的设备，Switchyard 会替它发布一套 HA MQTT Discovery（retained），
-所以在 HA 里直接就是一个设备 + 一组实体，**设备固件不用改**：
+| 字段 | 用途 |
+|---|---|
+| `caps` | **只有插件能做的操作**，决定详情页显示哪些管理按钮（不生成 HA 实体） |
+| `metrics` | 只读遥测清单，插件用它渲染详情页和列表摘要 |
+| `ha_entities` | 设备发过哪些 HA 实体，插件「删除设备」时照着清空 |
 
-| 实体 | 类型 | 来源 |
-|---|---|---|
-| 固件 / 信号 / 运行时长 / 电量 | sensor | `switchyard/<id>/state` 的 JSON 字段（`value_template`）|
-| 在线 | binary_sensor（connectivity）| `switchyard/<id>/availability` |
-| 重启 / 检查更新 | button | 发布 `{"cmd":"reboot"}` / `{"cmd":"ota"}` 到 `switchyard/<id>/cmd` |
+控制类动作（阀门、重启、亮度）不占 `caps`，由设备在自己的 discovery 里声明
+`command_topic = switchyard/<id>/ha/<object>/set`，payload 用 HA 的惯例
+（`ON`/`OFF`、数字、`PRESS`）。
 
-- discovery 主题：`homeassistant/<component>/switchyard_<id>/<object>/config`；
-- 设备首次上报时发布一次，固件版本/类型变化时重发，另外每 5 分钟补发一次
-  （broker 没开持久化时，重启后配置不会丢）；
-- 「删除设备」会把这些 discovery 配置一起清掉（空 retained）。
+详见 [../docs/PROTOCOL.md](../docs/PROTOCOL.md)。
 
 ### 改设备名（device_id）
 
@@ -159,10 +142,22 @@ device_id 是 MQTT 主题里那一段（`switchyard/<device_id>/...`），改它
   **最近 `device_stale_seconds` 内有上报**，超时就显示离线（电池设备本来就长时间不报，按需调大）；
 - 设备页可以「删除设备」（`POST /api/devices/<id>/forget`），把它从注册表里去掉。
 
-## 为什么是零依赖
+## 依赖
 
-构建时只 `FROM python:3.12-alpine`，用 Python 标准库的 `http.server` + `urllib`，
-不装 Flask/Requests，避免 HA 构建时 pip 拉包失败（国内网络常见）。
+**只有一个第三方依赖：Flask。**
+
+| 层 | 实现 |
+|---|---|
+| HTTP（ingress 面板 / REST / 文件上传） | Flask 3（`requirements.txt`），带来 werkzeug / jinja2 / click / itsdangerous / markupsafe / blinker |
+| MQTT 客户端 | **标准库手写**（socket + struct），不用 paho |
+| 其余 | 全部 Python 标准库 |
+
+HTTP 层之所以没走 `http.server`：背景图和固件的 `multipart/form-data` 上传、
+静态文件、ingress 前缀剥离，手写这些是安全雷区（边界解析、大文件 DoS、路径穿越），
+用 Flask 更稳。
+
+构建时的网络问题由 Dockerfile 处理：先按「阿里云 → 中科大 → 清华」依次尝试 PyPI
+镜像，全部失败才装编译工具链走官方源。
 
 ## 许可
 

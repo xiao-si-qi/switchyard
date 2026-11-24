@@ -37,26 +37,27 @@ Switchyard 提供一层统一的"设备管理"：
 
 四个不同硬件、不同架构的项目，共用同一套协议，都能在同一个面板里管理：
 
-| 项目 | 硬件 | 角色 | 能力（caps）与特点 |
+| 项目 | 硬件 | 角色 | 插件侧操作与特点 |
 |---|---|---|---|
-| [**orbis-w518**](https://github.com/xiao-si-qi/orbis-w518) | GUITION 太极小派 **JC3636W518**<br>ESP32-S3 · 1.85" 360×360 圆屏 | 触屏控制屏 | `layout` `background` `rotation` `voice` `brightness` `ota` `log`<br>JSON 布局、背景图轮播、四方向、小智语音页、滑动翻页 |
+| [**orbis-w518**](https://github.com/xiao-si-qi/orbis-w518) | GUITION 太极小派 **JC3636W518**<br>ESP32-S3 · 1.85" 360×360 圆屏 | 触屏控制屏 | `layout` `background` `rotation` `voice` `ota`<br>JSON 布局、背景图轮播、四方向、小智语音页、滑动翻页 |
 | [**orbis-f118**](https://github.com/xiao-si-qi/orbis-f118) | GUITION **JC3636F118C**<br>ESP32-S31 · 1.65" 圆屏 + **旋钮** | 旋钮控制屏 | 与 w518 同协议；弧形刻度盘调灯/空调/风扇；<br>额外支持 `switchyard/<id>/shot` 截图回传 |
 | [**ls2k0300**](https://github.com/xiao-si-qi/ls2k0300) | 龙芯 **2K0300**（LoongArch64，久久派） | 主机类设备 | Go 写的 `switchyard-agent`：主机指标（CPU/内存/磁盘）、USB 事件、<br>远程命令（`reboot`/`ota`/`cfg`/`log`/`set`）、日志回传 |
-| [**esp32-water-meter**](https://github.com/xiao-si-qi/esp32-water-meter) | ESP32-C3 + RS485 电子远传水表 | 传感器 / 执行器 | `water` `valve` `battery` `climate` `leak` `comm_fault`<br>累计水量、开关阀门、水电量、漏水与通信故障告警 |
+| [**esp32-water-meter**](https://github.com/xiao-si-qi/esp32-water-meter) | ESP32-C3 + RS485 电子远传水表 | 传感器 / 执行器 | `ota`<br>累计水量、开关阀门、水量/电量、漏水与通信故障告警（阀门等控制走 HA 实体） |
 
 两块圆屏的**布局协议、MQTT 约定、HA 通道完全一致**，布局可以在同一个面板里互通编辑；
 水表和主机类设备复用同一套 `state / meta / cmd / cfg / log` 语义。
 
 > `ls2k0300` 仓库里同时记录了这块板从换内核到无头部署的完整踩坑笔记。
 >
-> 想接入新设备？照 [docs/PROTOCOL.md](docs/PROTOCOL.md) 实现 `state` + `meta` 就已经能被发现；
-> 再实现 `cmd` / `cfg` / `log` 就能被远程控制和排障。
+> 想接入新设备？照 [docs/PROTOCOL.md](docs/PROTOCOL.md) 实现 `state` + `meta`，
+> 自己往 `homeassistant/...` 发实体配置，就能在 HA 里出现、在台账里被管理；
+> 再实现 `cmd` / `cfg` / `log` 就能接受 OTA、配置下发和远程排障。
 
 ## 架构
 
 ```
                 ┌──────────────── Home Assistant ────────────────┐
-   Mosquitto    │  MQTT 集成（按 caps 自动发现实体）               │
+   Mosquitto    │  MQTT 集成（设备自注册实体，插件不参与）        │
    (broker)     │  Switchyard 加载项（设备台账 / 配置 / OTA / 日志）│
                 └──────────┬────────────────────┬─────────────────┘
                            │                    │
@@ -65,11 +66,16 @@ Switchyard 提供一层统一的"设备管理"：
   常在线                常在线                 周期上报             常在线
 ```
 
-- 设备 → `switchyard/<id>/{state,availability,meta,event,diag,log}`
-- Switchyard → `switchyard/<id>/{cmd,cfg}`（`cmd` 不 retain，`cfg` retained）
+- 设备 → `switchyard/<id>/{state,availability,meta,event,diag,log}`（台账 / 诊断）
+- 设备 → `homeassistant/<comp>/switchyard_<id>/<obj>/config`（**自己注册 HA 实体**）
+- HA → `switchyard/<id>/ha/<obj>/set`（开关、按钮、数字，纯值）
+- 插件 → `switchyard/<id>/{cmd,cfg}`（OTA、布局、取日志这些 HA 做不到的）
 - 二进制（固件、背景图）不放 MQTT：设备拿 URL 自己去 HTTP 拉
 
-完整主题表、JSON 字段、seq 去重、caps 语义见 **[docs/PROTOCOL.md](docs/PROTOCOL.md)**。
+**插件不在实体注册路径上**：它挂了、升级坏了，HA 里已有的实体和自动化照常工作，
+只是插件自己的台账页打不开。
+
+完整主题表、JSON 字段、seq 去重、caps/metrics 语义见 **[docs/PROTOCOL.md](docs/PROTOCOL.md)**。
 
 ## 安装（Home Assistant 加载项）
 
@@ -89,10 +95,10 @@ Switchyard 提供一层统一的"设备管理"：
 
 已实现并实机验证：
 
-- [x] 加载项骨架（ingress 面板、零 pip 依赖的 Python 标准库实现）
-- [x] 最小 MQTT 客户端（标准库实现；校验 SUBACK、应答 QoS1、PINGRESP 存活检测）
-- [x] **设备台账**：按 retained 状态列出在线/固件/信号/电量，支持删除与重连补发
-- [x] **能力声明**：只按设备 `caps` 生成实体，能力增减会自动清理孤儿实体
+- [x] 加载项骨架（ingress 面板，HTTP 层用 Flask）
+- [x] 最小 MQTT 客户端（标准库手写；校验 SUBACK、应答 QoS1、PINGRESP 存活检测）
+- [x] **设备台账**：按 retained 状态列出在线/固件/信号/电量 + 设备自报的指标，支持删除
+- [x] **设备自注册**：HA 实体由设备自己发 MQTT Discovery，插件不在实体注册路径上
 - [x] **布局编辑器**：多页 / 每页最多 12 卡片 / 卡片类型（开关·场景·传感器）/ 实体搜索
 - [x] **背景图轮播**：浏览器端裁剪上传、间隔与暗化可调、按设备屏幕规格转换
 - [x] **固件分发**：上传 `.bin`，推送 URL 让设备自己 OTA（双分区，可回滚）
@@ -103,7 +109,6 @@ Switchyard 提供一层统一的"设备管理"：
 
 - [ ] 批量固件分发（一次给同型号全部设备）
 - [ ] OTA 进度回传（`event: ota_progress`）
-- [ ] host 类设备的指标 caps（CPU / 内存 / 磁盘）
 
 ## 许可
 

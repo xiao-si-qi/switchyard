@@ -1,4 +1,4 @@
-# Switchyard 设备协议（v0.1 草案）
+# Switchyard 设备协议
 
 一套给"自制 ESP32 设备 + Home Assistant"用的最小 MQTT 约定。
 目标：新设备照抄这几个主题和字段就能被 Switchyard 管理，不需要改上位机代码。
@@ -12,17 +12,29 @@
 
 ## 2. 主题表
 
+分两组：**设备自己维护的 HA 实体**走标准 MQTT Discovery，**插件独有能力**才走
+`switchyard/` 下的命令主题。
+
+### 2.1 数据与 HA 实体（设备负责）
+
 | 主题 | 方向 | retain | 说明 |
 |---|---|---|---|
-| `switchyard/<id>/state` | 设备 → HA | ✅ | JSON 状态快照，见 §3 |
+| `homeassistant/<comp>/switchyard_<id>/<obj>/config` | 设备 → HA | ✅ | **HA 实体声明**，标准 MQTT Discovery，见 §8 |
+| `switchyard/<id>/state` | 设备 → HA | ✅ | JSON 状态快照，见 §3；HA 实体直接读它 |
 | `switchyard/<id>/availability` | 设备 → HA | ✅ | `online` / `offline`，用 LWT 维护 |
-| `switchyard/<id>/event` | 设备 → HA | ❌ | JSON 事件，见 §4 |
-| `switchyard/<id>/cmd` | Switchyard → 设备 | ❌ | JSON 命令，见 §5（**不 retain**：一次性动作，设备需在线）|
-| `switchyard/<id>/cfg` | Switchyard → 设备 | ✅ | **配置下发（布局 JSON）**，见 §5.1 |
-| `switchyard/<id>/diag` | 设备 → 上位机 | ✅ | 错误摘要（≤1KB，限流 1 条/分钟）|
-| `switchyard/<id>/log` | 设备 → 上位机 | ❌ | **按需**回传最近 N 行日志，非 retained |
-| `switchyard/<id>/ack` | 设备 → HA | ❌ | `{"seq":N,"ok":true,"err":"..."}` |
-| `switchyard/<id>/meta` | 设备 → HA | ✅ | **能力声明**，见 §6（推荐；缺省按 type 兜底） |
+| `switchyard/<id>/event` | 设备 → | ❌ | JSON 事件，见 §4 |
+| `switchyard/<id>/diag` | 设备 → | ✅ | 错误摘要（≤1KB，限流 1 条/分钟）|
+| `switchyard/<id>/log` | 设备 → | ❌ | 按需回传最近 N 行日志 |
+| `switchyard/<id>/meta` | 设备 → 插件 | ✅ | 设备声明（caps / metrics / ha_entities），见 §6 |
+
+### 2.2 控制与配置下行
+
+| 主题 | 方向 | retain | 说明 |
+|---|---|---|---|
+| `switchyard/<id>/ha/<obj>/set` | HA → 设备 | ❌ | HA 的控制（阀门、按钮、数字），纯值 payload，见 §8.3 |
+| `switchyard/<id>/cmd` | 插件 → 设备 | ❌ | 插件独有的 JSON 命令（`get`/`set`/OTA 等），带 `seq` 去重，见 §5 |
+| `switchyard/<id>/cfg` | 插件 → 设备 | ✅ | 配置下发（布局 JSON），见 §5.1 |
+| `switchyard/<id>/ack` | 设备 → 插件 | ❌ | `{"seq":N,"ok":true,"err":"..."}` |
 
 ## 3. state 快照
 
@@ -93,56 +105,25 @@ switchyard 按此裁剪与转换；目前设备只声明 `jpeg`（`esp_jpeg` 解
 当前限制：TLS 记录必须用默认的 16 KB 输入缓冲（`CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=16384`），
 调小会导致下载大文件时报 `MBEDTLS_ERR_SSL_BAD_INPUT_DATA`。
 
-## 5. cmd
+## 5. cmd（插件独有操作）
+
+**只放 HA 做不到的动作**（固件分发、布局下发、取日志）。阀门、重启、亮度这类
+HA 能直接表达的控制走 `switchyard/<id>/ha/<obj>/set`（见 §8.3），不占这里。
 
 ```json
 {"seq":12,"cmd":"ota","url":"https://ha.example.com/local/switchyard/fw/screen-0.2.0.bin","sha256":"..."}
 {"seq":13,"cmd":"layout","url":"https://ha.example.com/local/switchyard/layout/hall.json"}
-{"seq":14,"cmd":"reboot"}
-{"seq":16,"cmd":"state"}   // 立刻上报 state/meta
-{"seq":17,"cmd":"get","key":"layout"}   // 把 NVS 里的布局回发到 cfg
-{"seq":15,"cmd":"set","key":"brightness","value":60}
+{"seq":14,"cmd":"state"}              // 立刻上报 state/meta
+{"seq":15,"cmd":"get","key":"log"}    // 把最近 N 行日志发到 log 主题
+{"seq":16,"cmd":"get","key":"cfg"}    // 把当前配置发到 cfg 主题
 ```
 
-**seq 语义（关键）**
+**seq 语义**
 
-- Switchyard 维护每个设备的 `seq` 单调递增；
-- 命令以 **retained** 方式发布，设备上线/唤醒后订阅到最新一条；
-- 设备本地保存"已执行的最后 seq"，**只执行 seq 更大的命令**，执行完发 `ack`，再清掉 retained（`retain=true, payload=""`）；
-- 这样"发命令时设备在睡觉"也不会丢：醒来第一件事就是拉到它。
-
-### 4.5 背景图轮播（可选字段）
-
-布局 JSON 里可以带一个 `bg` 对象，设备端自己下载并解码：
-
-```json
-"bg": {
-  "images": [
-    "https://ha.xiaosiqi.cn/local/switchyard/orbis/bg/1.jpg",
-    "https://ha.xiaosiqi.cn/local/switchyard/orbis/bg/2.jpg"
-  ],
-  "interval": 60,
-  "dim": 35,
-  "card": 60
-}
-```
-
-- `images`：按顺序轮播，最多 8 张；
-- `interval`：每张停留秒数（≥5，默认 60）；
-- `dim`：图片上叠一层黑色的百分比（0-80，默认 35）；
-- `card`：卡片自身的黑色蒙版百分比（0-95，默认 60）。卡片因此比背景更暗，
-  形成"玻璃"效果；设 95 接近纯黑，设 0 则完全透明（只剩文字）。
-
-设备侧行为：
-1. 首次下载后把 JPEG 存进 flash 的 `assets` FAT 分区（`/assets/bg_<i>.jpg` + `bg_<i>.url`）；
-2. 之后开机若 URL 未变，直接读缓存解码，不再走网络；
-3. 解码成 RGB565 贴在最底层，切换时 500ms 淡入。
-
-设备用 `meta.display` 声明屏幕规格（`w`/`h`/`formats`/`fit`），
-switchyard 按此裁剪与转换；目前设备只声明 `jpeg`（`esp_jpeg` 解码）。
-
-当前限制：TLS 记录必须用默认的 16 KB 输入缓冲（`CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=16384`），
-调小会导致下载大文件时报 `MBEDTLS_ERR_SSL_BAD_INPUT_DATA`。
+- 插件为每台设备维护单调递增的 `seq`（用当前时间戳，天然大于任何历史值）；
+- 命令以 **retained** 方式发布，设备上线/唤醒后一订阅就能拿到最新一条；
+- 设备本地保存"已执行的最后 seq"，**只执行 seq 更大的命令**，执行完发 `ack`；
+- 如果收到的是 retained 命令，执行完再发一条空 retained 清掉它，避免重复执行。
 
 ## 5.1 cfg：配置直接下发（推荐）
 
@@ -230,18 +211,30 @@ metric 字段：
 设备把发过的实体列出来，插件「删除设备」时照着发空 retained：
 `homeassistant/<component>/switchyard_<id>/<object>/config`。
 
-不列也没关系——只是删完设备后，HA 里会留下手动删的孤儿实体。
+完整的一份 meta 长这样：
 
 ```json
 {
   "type": "screen",
-  "caps": ["layout", "ota", "brightness"],
+  "name": "圆屏",
+  "model": "JC3636W518",
+  "caps": ["layout", "background", "voice", "rotation", "ota"],
   "display": {"w": 360, "h": 360},
-  "partition": {"ota": true}
+  "metrics": [
+    {"key": "rssi", "name": "信号", "unit": "dBm", "device_class": "signal_strength"},
+    {"key": "battery", "name": "电量", "unit": "%", "device_class": "battery"}
+  ],
+  "ha_entities": [
+    {"component": "sensor",        "object": "rssi"},
+    {"component": "sensor",        "object": "battery"},
+    {"component": "binary_sensor", "object": "online"},
+    {"component": "button",        "object": "reboot"},
+    {"component": "number",        "object": "brightness"}
+  ]
 }
 ```
 
-Switchyard 用它决定显示哪些按钮（有没有 OTA、能否下发布局）。
+插件只用它渲染台账和详情页，**不据此生成任何 HA 实体**。
 
 ## 7. OTA 流程
 
@@ -321,14 +314,5 @@ payload 用 HA 的惯例（`ON`/`OFF`、数字、按钮的 `PRESS`），**不是
 ### 8.4 删除设备时的清理
 
 设备在 `meta.ha_entities` 里自报发过哪些实体，插件「删除设备」时照着发空 retained
-（见 §6.3）。设备没自报就只能去 HA 界面里手动删。
+（见 §6.3），同时清掉 `switchyard/<id>/` 下的 retained 状态。
 
-## 9. 版本演进
-
-- v0.1：state / availability / cmd / ack / event；
-- v0.2：引入 `meta.metrics`，只读遥测不再占 `caps`；
-- **v0.3（本版）**：HA 实体改由设备自己发布 discovery，插件不再生成实体；
-  `caps` 收缩为"Switchyard 独有能力"；新增 `ha_entities` 与 `switchyard/<id>/ha/<obj>/set`；
-  新增 `meta.metrics.kind` / `source` 等字段。
-- 后续新增字段必须可选，设备可忽略未知字段；
-- 破坏性变更走 `switchyard/v2/...` 新根，不原地改语义。
