@@ -224,7 +224,7 @@
       </p>
     </div>
 
-    <div class="panel">
+    <div class="panel hidden" id="d-fw-panel">
       <div class="row">
         <strong style="font-size:14px">本设备固件</strong>
         <span class="status" id="d-fw-info">读取中…</span>
@@ -399,6 +399,9 @@ let currentDevice = null;
 let currentCaps = [];
 let forgetArmed = false;
 let lastRenderedDevice = null;
+/* 当前设备已上传的固件记录。必须随设备切换而重置，否则详情页会把上一台设备的
+   "已上传/可升级"显示到这台设备上（主机类设备没有 OTA，尤其明显）。 */
+let uploadedFw = null;
 let cfgDevice = "";
 let pollTimer = null;
 
@@ -414,6 +417,8 @@ function route() {
     lastRenderedDevice = null;   /* 进入/切换设备：让 renderDetail 按"切设备"处理一次 */
     renderDetail();
     loadDevices(true);
+    // 无条件拉一次：函数内部会先重置 uploadedFw，不会把上一台设备的值带过来；
+    // 不支持 OTA 的设备这个面板本来就是隐藏的
     loadDeviceFirmware(currentDevice);
     if ((currentCaps || []).indexOf("layout") >= 0) loadLayout();
   } else {
@@ -633,6 +638,10 @@ function renderDetail() {
     if ($("d-bg-status")) { $("d-bg-status").textContent = ""; $("d-bg-status").className = "status"; }
     if ($("d-bg-list")) $("d-bg-list").innerHTML = "";
     if ($("d-fw-info")) $("d-fw-info").textContent = "读取中…";
+    // 固件记录必须跟着设备走：不支持 OTA 的设备不会去拉 firmware，
+    // 不在这里清掉就会把上一台设备的"已上传/可升级"带过来
+    uploadedFw = null;
+    renderUpdateState();
   }
   if ($("d-forget")) {
     forgetArmed = false;
@@ -693,6 +702,10 @@ function renderDetail() {
   // 布局面板只给上报了 layout 能力的设备
   const canLayout = has("layout");
   $("d-layout-panel").classList.toggle("hidden", !canLayout);
+  // 固件面板只给支持 OTA 的设备——主机类设备（如 2K0300 的 Go 代理）没有双分区，
+  // 不该看到上传/下发固件的入口
+  const canOta = has("ota");
+  $("d-fw-panel").classList.toggle("hidden", !canOta);
   if ($("d-rotation-row")) $("d-rotation-row").classList.toggle("hidden", !has("rotation"));
   if ($("d-voice-panel")) $("d-voice-panel").classList.toggle("hidden", !has("voice"));
   $("d-entities-panel").classList.toggle("hidden", !canLayout);
@@ -700,6 +713,7 @@ function renderDetail() {
   const canLog = has("log") || devMetrics(d).some((m) => m && m.source === "diag");
   $("d-log-panel").classList.toggle("hidden", !canLog);
   $("d-bg-panel").classList.toggle("hidden", !has("background"));
+  if (canOta && switchedDevice) loadDeviceFirmware(currentDevice);
   if (has("background") && switchedDevice) loadBackground();
   if (has("voice") && switchedDevice) loadVoicePanel();
   if (canLayout && switchedDevice) {
@@ -707,9 +721,16 @@ function renderDetail() {
        （HA 的 /api/states 接近 1 MB，定时拉会白耗流量） */
     searchEntities();
   }
-  const capText = currentCaps.length
-    ? "能力: " + currentCaps.join(" / ")
-    : "能力: 未上报（按类型默认）";
+  // caps 只有三种情况：有插件侧能力 / 明确声明为无 / 设备根本没上报
+  const capsDeclared = !!(d.meta && Array.isArray(d.meta.caps));
+  let capText;
+  if (currentCaps.length) {
+    capText = "能力: " + currentCaps.join(" / ");
+  } else if (capsDeclared) {
+    capText = "能力: 无（HA 实体由设备自行注册，插件没有可代劳的操作）";
+  } else {
+    capText = "能力: 未上报";
+  }
   const metricText = devMetrics(d).length
     ? "　指标: " + devMetrics(d).map((m) => m.name || m.key).join(" / ")
     : "";
@@ -1501,8 +1522,6 @@ $("q").addEventListener("input", () => {
   searchTimer = setTimeout(searchEntities, 300);
 });
 
-let uploadedFw = null;
-
 function renderUpdateState() {
   const d = devices.find((x) => x.id === currentDevice);
   const devFw = d && d.fw;
@@ -1528,10 +1547,15 @@ function renderUpdateState() {
 async function loadDeviceFirmware(deviceId) {
   const el = $("d-fw-info");
   if (!el) return;
+  // 先清掉上一台设备的记录：这个全局变量必须跟着当前设备走，
+  // 否则切到没传过固件的设备时，"已上传/可升级"还是上一台的值
+  uploadedFw = null;
+  renderUpdateState();
   try {
     const resp = await fetch("api/devices/" + encodeURIComponent(deviceId) + "/firmware");
     const data = await resp.json();
     if (!data.ok) { el.textContent = "读取失败"; return; }
+    if (currentDevice !== deviceId) return;   // 请求期间已切走，丢弃结果
     if (!data.firmware) { el.textContent = "这台设备还没上传固件"; return; }
     const fw = data.firmware;
     uploadedFw = fw;
