@@ -237,12 +237,14 @@ Switchyard 用它决定显示哪些按钮（有没有 OTA、能否下发布局�
 |---|---|---|
 | `key` | ✅ | state JSON 里的字段名，也是 `object_id` 后缀。限 `[a-z0-9_]{1,40}` |
 | `name` | | 显示名，缺省用 `key` |
+| `kind` | | `sensor`（默认）或 `binary_sensor`——布尔型遥测（漏水、通信故障）用后者 |
 | `unit` | | 单位。有单位就自动带 `state_class=measurement` |
 | `icon` | | mdi 图标 |
-| `device_class` | | HA 的 device_class（如 `temperature`、`signal_strength`、`duration`） |
+| `device_class` | | HA 的 device_class（如 `temperature`、`signal_strength`、`duration`、`moisture`） |
 | `state_class` | | 覆盖默认的 `measurement`（如 `total_increasing`） |
 | `object` | | 覆盖 object_id 后缀——**迁移时用来保持 entity_id 不变** |
-| `category` | | `diagnostic` / `config`，缺省 `diagnostic` |
+| `category` | | `diagnostic` / `config`，缺省 `diagnostic`；传空字符串则不设 |
+| `source` | | `state`（默认）或 `diag`——值从哪个主题取（日志行用 `diag`） |
 
 生成的实体：`homeassistant/sensor/switchyard_<id>/<object>/config`，
 `state_topic` 指向 `switchyard/<id>/state`，`value_template` 为 `{{ value_json.<key> }}`。

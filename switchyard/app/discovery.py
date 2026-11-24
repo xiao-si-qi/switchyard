@@ -241,15 +241,16 @@ def _configs(device_id, state, caps):
 
 
 def _metric_configs(device_id, state, metrics):
-    """把设备声明的 meta.metrics 转成 HA sensor 配置，返回 [(object, payload), ...]。
+    """把设备声明的 meta.metrics 转成 HA 实体配置，返回 [(component, object, payload), ...]。
 
     metric 字段（都来自设备，插件不猜）：
 
         key          必填，JSON 里的字段名（也做 object_id 后缀）
         name         显示名，缺省用 key
+        kind         sensor（默认）或 binary_sensor
         unit         单位，有单位就带 state_class=measurement
         icon         mdi 图标
-        device_class HA 的 device_class（可省）
+        device_class HA 的 device_class（可省，binary_sensor 建议给）
         state_class  覆盖默认的 measurement
         object       覆盖 object_id 后缀（迁移时用来保持 entity_id 不变）
         category     diagnostic / config，缺省 diagnostic
@@ -266,6 +267,9 @@ def _metric_configs(device_id, state, metrics):
         obj = str(m.get("object") or key).strip()
         if not METRIC_KEY_RE.match(obj):
             obj = key
+        kind = str(m.get("kind") or "sensor").lower()
+        if kind not in ("sensor", "binary_sensor"):
+            kind = "sensor"
         source = str(m.get("source") or "state").lower()
         if source == "diag":
             state_topic = "switchyard/%s/diag" % device_id
@@ -278,10 +282,16 @@ def _metric_configs(device_id, state, metrics):
             "unique_id": "switchyard_%s_%s" % (device_id, obj),
             "object_id": "%s_%s" % (device_id, obj),
             "state_topic": state_topic,
-            "value_template": "{{ value_json.%s }}" % key,
             "device": _device_block(device_id, state),
             "origin": {"name": MANUFACTURER},
         }
+        if kind == "binary_sensor":
+            # 布尔值：设备给 true/false/0/1 都行，统一映射成 ON/OFF
+            cfg["value_template"] = "{{ 'ON' if value_json.%s else 'OFF' }}" % key
+            cfg["payload_on"] = "ON"
+            cfg["payload_off"] = "OFF"
+        else:
+            cfg["value_template"] = "{{ value_json.%s }}" % key
         if m.get("unit"):
             cfg["unit_of_measurement"] = m["unit"]
             cfg["state_class"] = m.get("state_class") or "measurement"
@@ -292,7 +302,7 @@ def _metric_configs(device_id, state, metrics):
         category = m.get("category", "diagnostic")
         if category:
             cfg["entity_category"] = category
-        out.append((obj, cfg))
+        out.append((kind, obj, cfg))
     return out
 
 
@@ -333,16 +343,18 @@ def publish_device(mqtt, device_id, state, caps=None, metrics=None):
     # ---- metrics（只读遥测）----
     metric_cfgs = _metric_configs(device_id, state, metrics)
     current = set()
-    for obj, cfg in metric_cfgs:
-        current.add(obj)
-        topic = "%s/sensor/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, device_id, obj)
+    for component, obj, cfg in metric_cfgs:
+        current.add((component, obj))
+        topic = "%s/%s/switchyard_%s/%s/config" % (
+            DISCOVERY_PREFIX, component, device_id, obj)
         if mqtt.publish(topic, json.dumps(cfg, ensure_ascii=False), retain=True):
             sent += 1
 
     # 清掉这台设备上次发布过、这次不再声明的 metric 实体
     previous = _METRIC_SEEN.get(device_id, set())
-    for obj in previous - current:
-        topic = "%s/sensor/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, device_id, obj)
+    for component, obj in previous - current:
+        topic = "%s/%s/switchyard_%s/%s/config" % (
+            DISCOVERY_PREFIX, component, device_id, obj)
         mqtt.publish(topic, "", retain=True)
     _METRIC_SEEN[device_id] = current
 
@@ -364,9 +376,10 @@ def remove_device(mqtt, device_id, caps=None):
         topic = "%s/%s/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, component, device_id, obj)
         if mqtt.publish(topic, "", retain=True):
             removed += 1
-    # 这台设备声明过的 metric 实体也要清
-    for obj in _METRIC_SEEN.pop(device_id, set()):
-        topic = "%s/sensor/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, device_id, obj)
+    # 这台设备声明过的 metric 实体也要清（_METRIC_SEEN 存的是 (component, obj)）
+    for component, obj in _METRIC_SEEN.pop(device_id, set()):
+        topic = "%s/%s/switchyard_%s/%s/config" % (
+            DISCOVERY_PREFIX, component, device_id, obj)
         if mqtt.publish(topic, "", retain=True):
             removed += 1
     # 固有属性（在线状态）也要清
