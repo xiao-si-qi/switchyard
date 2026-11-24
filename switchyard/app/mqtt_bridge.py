@@ -399,6 +399,7 @@ class DeviceStore:
                         "last_seen": dev["last_seen"],
                         "stale_seconds": self._stale_after,
                         "event": dev["event"],
+                        "diag": dev.get("diag"),      # meta.metrics 里 source=diag 的指标从这里取
                         "meta": meta,      # 同上
                         "display": meta.get("display") or {},
                         "raw": state,

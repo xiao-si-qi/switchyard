@@ -50,52 +50,60 @@ _METRIC_SEEN = {}
 _CAP_SEEN = {}
 
 
-def _entity_caps():
-    """所有会生成实体的 cap（排除 background/rotation/voice 这类纯 UI 能力）。"""
-    return [cap for cap, spec in SPECS.items() if spec.get("kind") != "none"]
-
-# 每类设备的默认能力（设备没上报 meta 时使用）
-DEFAULT_CAPS = {
-    "screen": ["fw", "rssi", "uptime", "layout", "background", "rotation", "voice", "ota", "reboot",
-               "brightness", "log", "online"],
-    "meter": ["fw", "rssi", "uptime", "battery", "battery_v", "water", "climate",
-              "leak", "comm_fault", "online", "valve", "ota", "reboot", "log"],
-    "elink": ["fw", "rssi", "uptime", "battery", "battery_v", "climate",
-              "leak", "online", "ota", "reboot"],
-    "unknown": ["fw", "rssi", "uptime", "online", "ota", "reboot"],
+# 已废弃的只读 cap：v0.2 起改由设备的 meta.metrics 声明。
+# 升级时要把它们残留在 broker 上的实体配置清掉，否则 HA 里会留下永不更新的孤儿实体。
+# 值是该 cap 原来生成的 HA 组件（climate 生成 temp，humidity 生成 hum）。
+LEGACY_CAPS = {
+    "fw": "sensor",
+    "rssi": "sensor",
+    "uptime": "sensor",
+    "battery": "sensor",
+    "battery_v": "sensor",
+    "water": "sensor",
+    "temp": "sensor",
+    "hum": "sensor",
+    "leak": "binary_sensor",
+    "comm_fault": "binary_sensor",
+    "log": "sensor",
 }
 
-# 能力 -> 实体规格。value 里的 state_topic/cmd_topic 在 _configs 里补齐。
-#   kind: sensor / binary_sensor / button / number / switch
+
+def _cap_entity(cap):
+    """cap -> (HA 组件, object_id 后缀)。同时覆盖现行 SPECS 和已废弃的 LEGACY_CAPS。"""
+    spec = SPECS.get(cap)
+    if spec is not None and spec.get("kind") not in (None, "none"):
+        return spec["kind"], spec.get("obj", cap)
+    legacy = LEGACY_CAPS.get(cap)
+    if legacy:
+        return legacy, cap
+    return None
+
+
+def _clearable_caps():
+    """所有可能在 broker 上留下实体配置的 cap（现行 + 废弃）。"""
+    return set(SPECS.keys()) | set(LEGACY_CAPS.keys())
+
+
+def _entity_caps():
+    """现行 SPECS 里会生成实体的 cap（排除纯 UI 能力）。"""
+    return [cap for cap, spec in SPECS.items() if spec.get("kind") != "none"]
+
+# 每类设备的默认能力（设备没上报 meta 时使用）。
+# 注意：这里**只列可操作能力和纯 UI 能力**——只读遥测已经归 meta.metrics，
+# 不会再从 caps 兜底，否则新规则形同虚设。
+DEFAULT_CAPS = {
+    "screen": ["layout", "background", "rotation", "voice", "ota", "reboot", "brightness"],
+    "meter": ["valve", "ota", "reboot"],
+    "elink": ["ota", "reboot"],
+    "unknown": ["ota", "reboot"],
+}
+
+# 能力 -> 实体规格。**只放需要 Switchyard 主动操作的能力**，
+# 以及只影响插件界面、不生成实体的纯 UI 能力。
+# 只读遥测（固件/信号/运行时长/电量/水量/温湿度/漏水/通信故障）请走 meta.metrics。
+#
+#   kind: button / number / switch / none（none = 只影响插件界面）
 SPECS = {
-    "fw": {"kind": "sensor", "name": "固件", "icon": "mdi:chip",
-           "tpl": "{{ value_json.fw }}", "diagnostic": True},
-    "rssi": {"kind": "sensor", "name": "信号", "unit": "dBm",
-             "device_class": "signal_strength", "state_class": "measurement",
-             "tpl": "{{ value_json.rssi }}", "diagnostic": True},
-    "uptime": {"kind": "sensor", "name": "运行时长", "unit": "s",
-               "device_class": "duration", "state_class": "total_increasing",
-               "tpl": "{{ value_json.uptime }}", "diagnostic": True},
-    "battery": {"kind": "sensor", "name": "电量", "unit": "%",
-                "device_class": "battery", "state_class": "measurement",
-                "tpl": "{{ value_json.battery }}", "diagnostic": True},
-    "battery_v": {"kind": "sensor", "name": "电池电压", "unit": "V",
-                  "device_class": "voltage", "state_class": "measurement",
-                  "tpl": "{{ value_json.battery_v }}", "diagnostic": True,
-                  "icon": "mdi:battery-outline"},
-    "water": {"kind": "sensor", "name": "累计水量", "unit": "m³",
-              "device_class": "water", "state_class": "total_increasing",
-              "tpl": "{{ value_json.water }}", "icon": "mdi:water"},
-    "climate": {"kind": "sensor", "obj": "temp", "name": "温度", "unit": "°C",
-                "device_class": "temperature", "state_class": "measurement",
-                "tpl": "{{ value_json.temp }}", "icon": "mdi:thermometer"},
-    "humidity": {"kind": "sensor", "obj": "hum", "name": "湿度", "unit": "%",
-                 "device_class": "humidity", "state_class": "measurement",
-                 "tpl": "{{ value_json.hum }}", "icon": "mdi:water-percent"},
-    "leak": {"kind": "binary_sensor", "name": "漏水", "device_class": "moisture",
-             "bool_tpl": "leak", "icon": "mdi:water-alert"},
-    "comm_fault": {"kind": "binary_sensor", "name": "通信故障", "device_class": "problem",
-                   "bool_tpl": "comm_fault", "icon": "mdi:connection"},
     "valve": {"kind": "switch", "name": "阀门", "icon": "mdi:valve",
               "bool_tpl": "valve",
               "payload_on": {"cmd": "valve", "open": True},
@@ -107,16 +115,16 @@ SPECS = {
     "brightness": {"kind": "number", "name": "亮度", "unit": "%", "tpl_field": "brightness",
                    "icon": "mdi:brightness-6", "min": 10, "max": 100, "step": 5,
                    "command_template": '{"cmd":"set","key":"brightness","value":{{ value }}}'},
-    "online": {"kind": "binary_sensor", "name": "在线", "device_class": "connectivity",
-               "availability": True},
-    # 这些能力不生成实体，只决定设备页显示哪些配置面板
+    # 纯 UI 能力：不生成实体，只决定设备页显示哪些配置面板
+    "layout": {"kind": "none"},
     "background": {"kind": "none"},
     "rotation": {"kind": "none"},
     "voice": {"kind": "none"},
-
-    "log": {"kind": "sensor", "name": "最近错误", "icon": "mdi:alert-circle-outline",
-            "diag": True, "diagnostic": True},
 }
+
+# 在线状态是设备的固有属性（由 availability 主题 + LWT 维护），
+# 不需要设备声明，也不该挤在 caps 里。
+ALWAYS_ENTITY = "online"
 
 
 def _device_block(device_id, state):
@@ -147,10 +155,6 @@ def _configs(device_id, state, caps):
     avail_topic = "switchyard/%s/availability" % device_id
     cmd_topic = "switchyard/%s/cmd" % device_id
     out = []
-
-    # climate 一个能力覆盖"温度 + 湿度"两个实体
-    if "climate" in caps and "humidity" not in caps:
-        caps = list(caps) + ["humidity"]
 
     for cap in caps:
         spec = SPECS.get(cap)
@@ -220,6 +224,19 @@ def _configs(device_id, state, caps):
             cfg.pop("icon", None)
         out.append((kind, spec.get("obj", cap), cfg))
 
+    # 在线状态：固有属性，不由 caps 声明，永远生成（走 availability + LWT）
+    out.append(("binary_sensor", ALWAYS_ENTITY, {
+        "name": "在线",
+        "unique_id": "switchyard_%s_%s" % (device_id, ALWAYS_ENTITY),
+        "object_id": "%s_%s" % (device_id, ALWAYS_ENTITY),
+        "device": _device_block(device_id, state),
+        "origin": {"name": MANUFACTURER},
+        "state_topic": avail_topic,
+        "payload_on": "online",
+        "payload_off": "offline",
+        "device_class": "connectivity",
+    }))
+
     return out
 
 
@@ -228,16 +245,17 @@ def _metric_configs(device_id, state, metrics):
 
     metric 字段（都来自设备，插件不猜）：
 
-        key          必填，state JSON 里的字段名（也做 object_id 后缀）
+        key          必填，JSON 里的字段名（也做 object_id 后缀）
         name         显示名，缺省用 key
         unit         单位，有单位就带 state_class=measurement
         icon         mdi 图标
         device_class HA 的 device_class（可省）
+        state_class  覆盖默认的 measurement
         object       覆盖 object_id 后缀（迁移时用来保持 entity_id 不变）
         category     diagnostic / config，缺省 diagnostic
+        source       state（默认）或 diag —— 值从 state 还是 diag 主题取
     """
     out = []
-    state_topic = "switchyard/%s/state" % device_id
     for m in metrics or []:
         if not isinstance(m, dict):
             continue
@@ -248,6 +266,12 @@ def _metric_configs(device_id, state, metrics):
         obj = str(m.get("object") or key).strip()
         if not METRIC_KEY_RE.match(obj):
             obj = key
+        source = str(m.get("source") or "state").lower()
+        if source == "diag":
+            state_topic = "switchyard/%s/diag" % device_id
+        else:
+            source = "state"
+            state_topic = "switchyard/%s/state" % device_id
         cfg = {
             "name": m.get("name") or key,
             # unique_id 和 caps 路径用同一套命名，保证迁移时实体不变
@@ -287,16 +311,16 @@ def publish_device(mqtt, device_id, state, caps=None, metrics=None):
     declared = set(caps or [])
 
     # 清理不再声明的 cap 实体。
-    # 第一次见到这台设备时不知道 broker 上残留了什么，全量清一遍；
-    # 之后只清「上次声明过、这次没声明」的，避免每轮发布都发十几条空消息。
+    # 第一次见到这台设备时不知道 broker 上残留了什么（包括旧版本发布、
+    # 现在已废弃的只读 cap），全量清一遍；之后只清「上次声明过、这次没声明」的。
     previous = _CAP_SEEN.get(device_id)
-    stale = (set(_entity_caps()) - declared) if previous is None else (previous - declared)
+    stale = (_clearable_caps() - declared) if previous is None else (previous - declared)
     for cap in stale:
-        spec = SPECS.get(cap)
-        if spec is None or spec.get("kind") == "none":
+        target = _cap_entity(cap)
+        if target is None:
             continue
-        obj = spec.get("obj", cap)
-        topic = "%s/%s/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, spec["kind"], device_id, obj)
+        component, obj = target
+        topic = "%s/%s/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, component, device_id, obj)
         mqtt.publish(topic, "", retain=True)
     _CAP_SEEN[device_id] = declared
 
@@ -330,14 +354,14 @@ def remove_device(mqtt, device_id, caps=None):
     if mqtt is None or not mqtt.connected:
         return 0
     removed = 0
-    # 清掉这台设备曾经声明过的 cap 实体
-    past = _CAP_SEEN.pop(device_id, set(_entity_caps()))
-    for cap in past:
-        spec = SPECS.get(cap)
-        if spec is None or spec.get("kind") == "none":
+    # 清掉这台设备曾经声明过的 cap 实体（含已废弃的只读 cap）
+    past = _CAP_SEEN.pop(device_id, None)
+    for cap in (past if past is not None else _clearable_caps()):
+        target = _cap_entity(cap)
+        if target is None:
             continue
-        obj = spec.get("obj", cap)
-        topic = "%s/%s/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, spec["kind"], device_id, obj)
+        component, obj = target
+        topic = "%s/%s/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, component, device_id, obj)
         if mqtt.publish(topic, "", retain=True):
             removed += 1
     # 这台设备声明过的 metric 实体也要清
@@ -345,4 +369,9 @@ def remove_device(mqtt, device_id, caps=None):
         topic = "%s/sensor/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, device_id, obj)
         if mqtt.publish(topic, "", retain=True):
             removed += 1
+    # 固有属性（在线状态）也要清
+    topic = "%s/binary_sensor/switchyard_%s/%s/config" % (
+        DISCOVERY_PREFIX, device_id, ALWAYS_ENTITY)
+    if mqtt.publish(topic, "", retain=True):
+        removed += 1
     return removed

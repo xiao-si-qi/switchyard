@@ -163,24 +163,31 @@ switchyard/<id>/cfg      payload = 布局 JSON（和 /local/switchyard/layout.js
 
 ## 6. meta（能力声明）
 
-设备上线时发一次 retained 的 `switchyard/<id>/meta`。**插件只按这里的 caps 生成
-实体和按钮**，不猜 state 字段。词表：
+设备上线时发一次 retained 的 `switchyard/<id>/meta`。插件只按这里的声明生成实体，
+不猜 state 字段。
+
+**从 v0.2 起 `caps` 只放"需要 Switchyard 主动操作"的能力**（会下发命令的那些），
+以及只影响插件界面的纯 UI 能力。只读遥测走 [`meta.metrics`](#61-metrics只读遥测声明)。
 
 | cap | 实体 / 动作 |
 |---|---|
-| `fw` `rssi` `uptime` `online` | sensor / binary_sensor（通用诊断）|
-| `battery` `battery_v` | 电量 %、电池电压 V |
-| `water` | 累计水量 m³ |
-| `climate` | 温度 + 湿度 |
-| `leak` `comm_fault` | 漏水 / 通信故障 |
 | `valve` | 阀门 switch，命令 `{"cmd":"valve","open":true}` |
-| `reboot` `ota` | 重启 / 检查更新按钮 |
-| `brightness` | 亮度 number |
-| `layout` | 设备页布局编辑器开关 |
+| `reboot` | 重启按钮，命令 `{"cmd":"reboot"}` |
+| `ota` | 检查更新按钮 |
+| `brightness` | 亮度 number，命令 `{"cmd":"set","key":"brightness","value":N}` |
+| `layout` | （不生成实体）设备页布局编辑器开关 |
+| `background` `rotation` `voice` | （不生成实体）对应配置面板 |
 
-未声明的 cap 不生成实体；设备声明了但 state 没给值，实体显示 `unknown`（说明设备
-实现和声明不一致，属于设备侧 bug）。
+**在线状态不需要声明**：`switchyard/<id>/availability` 是每个设备都有的固有主题，
+插件永远生成 `binary_sensor.<id>_online`（connectivity，由 LWT 维护）。
 
+未声明的 cap 不生成实体。
+
+> **迁移说明（v0.2）**：`fw` / `rssi` / `uptime` / `battery` / `battery_v` / `water` /
+> `climate` / `humidity` / `leak` / `comm_fault` / `log` / `online` 这些**只读** cap
+> 已从词表移除，改由 `metrics` 声明。老固件继续声明它们也不会报错，只是不再生成实体；
+> 插件升级时会把 broker 上残留的旧实体配置清掉（见 `LEGACY_CAPS`）。
+> 迁移时 metric 的 `key` 沿用原 cap 名（如 `water`），`object_id` 不变，HA 里的实体能平滑过渡。
 
 ```json
 {

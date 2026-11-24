@@ -548,6 +548,55 @@ async function loadDevices(forDetail) {
   }
 }
 
+// ---- 指标（meta.metrics）----------------------------------------------
+// 设备在 meta 里声明自己有哪些只读指标，这里按声明展示，不写死字段名。
+// 加指标只要改设备，界面不用动。
+function devMetrics(d) {
+  return (d && d.meta && Array.isArray(d.meta.metrics)) ? d.meta.metrics : [];
+}
+
+function metricValue(d, m) {
+  const key = m.key;
+  if (!key) return undefined;
+  if (m.source === "diag") {
+    const diag = d.diag;
+    if (diag && typeof diag === "object") return diag[key];
+    return undefined;
+  }
+  return d.raw ? d.raw[key] : undefined;
+}
+
+function fmtMetric(v, unit) {
+  if (v === null || v === undefined || v === "") return "-";
+  let s;
+  if (typeof v === "number") {
+    s = Number.isInteger(v) ? String(v) : v.toFixed(1);
+  } else if (typeof v === "boolean") {
+    s = v ? "是" : "否";
+  } else {
+    s = String(v);
+  }
+  return unit ? s + " " + unit : s;
+}
+
+// 设备列表卡片上的一行摘要：最多 limit 个有值的指标
+function metricBits(d, limit) {
+  const out = [];
+  devMetrics(d).forEach((m) => {
+    if (out.length >= limit) return;
+    const v = metricValue(d, m);
+    if (v === null || v === undefined || v === "") return;
+    out.push((m.name || m.key) + " " + fmtMetric(v, m.unit));
+  });
+  if (!out.length) {
+    // 老设备没有 metrics 声明：退回原来那几个固定字段
+    if (d.fw) out.push("固件 " + d.fw);
+    if (d.rssi !== null && d.rssi !== undefined) out.push(d.rssi + " dBm");
+    if (d.battery !== null && d.battery !== undefined) out.push("电量 " + d.battery + "%");
+  }
+  return out;
+}
+
 function renderDevices() {
   const box = $("devices");
   box.innerHTML = "";
@@ -562,10 +611,7 @@ function renderDevices() {
     if (d.online) el.querySelector(".dot").classList.add("on");
     el.querySelector(".id").textContent = d.name || d.id;
     el.querySelector(".type").textContent = (d.name && d.name !== d.id) ? d.id : d.type;
-    const bits = [];
-    if (d.fw) bits.push("固件 " + d.fw);
-    if (d.rssi !== null && d.rssi !== undefined) bits.push(d.rssi + " dBm");
-    if (d.battery !== null && d.battery !== undefined) bits.push("电量 " + d.battery + "%");
+    const bits = metricBits(d, 3);
     bits.push("最后上报 " + fmtAge(d.last_seen));
     el.querySelector(".meta").textContent = bits.join(" · ");
     el.onclick = () => { location.hash = "#/d/" + encodeURIComponent(d.id); };
@@ -607,13 +653,21 @@ function renderDetail() {
   const rows = [
     ["设备 id", d.id],
     ["类型", d.type],
-    ["设备 ID", d.id],
-    ["固件", d.fw || "-"],
-    ["IP", d.ip || "-"],
-    ["信号", d.rssi !== null && d.rssi !== undefined ? d.rssi + " dBm" : "-"],
-    ["电量", d.battery !== null && d.battery !== undefined ? d.battery + " %" : "-"],
-    ["最后上报", fmtAge(d.last_seen)],
   ];
+  const mts = devMetrics(d);
+  if (mts.length) {
+    // 按设备声明的 metrics 生成，值取自 state（或 diag）
+    mts.forEach((m) => {
+      rows.push([m.name || m.key, fmtMetric(metricValue(d, m), m.unit)]);
+    });
+  } else {
+    // 老设备没有 metrics 声明：保留原来的固定字段
+    rows.push(["固件", d.fw || "-"]);
+    rows.push(["IP", d.ip || "-"]);
+    rows.push(["信号", d.rssi !== null && d.rssi !== undefined ? d.rssi + " dBm" : "-"]);
+    rows.push(["电量", d.battery !== null && d.battery !== undefined ? d.battery + " %" : "-"]);
+  }
+  rows.push(["最后上报", fmtAge(d.last_seen)]);
   const kv = $("d-kv");
   kv.innerHTML = "";
   rows.forEach(([k, v]) => {
@@ -641,7 +695,9 @@ function renderDetail() {
   if ($("d-rotation-row")) $("d-rotation-row").classList.toggle("hidden", !has("rotation"));
   if ($("d-voice-panel")) $("d-voice-panel").classList.toggle("hidden", !has("voice"));
   $("d-entities-panel").classList.toggle("hidden", !canLayout);
-  $("d-log-panel").classList.toggle("hidden", !has("log"));
+  // 日志面板：老设备看 log 能力，新设备看有没有 diag 来源的指标
+  const canLog = has("log") || devMetrics(d).some((m) => m && m.source === "diag");
+  $("d-log-panel").classList.toggle("hidden", !canLog);
   $("d-bg-panel").classList.toggle("hidden", !has("background"));
   if (has("background") && switchedDevice) loadBackground();
   if (has("voice") && switchedDevice) loadVoicePanel();
@@ -650,7 +706,13 @@ function renderDetail() {
        （HA 的 /api/states 接近 1 MB，定时拉会白耗流量） */
     searchEntities();
   }
-  $("d-caps").textContent = currentCaps.length ? "能力: " + currentCaps.join(" / ") : "能力: 未上报（按类型默认）";
+  const capText = currentCaps.length
+    ? "能力: " + currentCaps.join(" / ")
+    : "能力: 未上报（按类型默认）";
+  const metricText = devMetrics(d).length
+    ? "　指标: " + devMetrics(d).map((m) => m.name || m.key).join(" / ")
+    : "";
+  $("d-caps").textContent = capText + metricText;
   $("d-raw").textContent = JSON.stringify(d.raw, null, 2);
 }
 
