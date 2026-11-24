@@ -161,33 +161,76 @@ switchyard/<id>/cfg      payload = 布局 JSON（和 /local/switchyard/layout.js
 
 设备的优先级：`NVS 里的 cfg` → `HTTP /local/switchyard/layout.json` → 自动发现兜底。
 
-## 6. meta（能力声明）
+## 6. meta（设备声明）
 
-设备上线时发一次 retained 的 `switchyard/<id>/meta`。插件只按这里的声明生成实体，
-不猜 state 字段。
+设备上线时发一次 retained 的 `switchyard/<id>/meta`。它描述"我是谁、我会什么"，
+**不用于生成 HA 实体**（实体由设备自己发 discovery，见 §8）。
 
-**从 v0.2 起 `caps` 只放"需要 Switchyard 主动操作"的能力**（会下发命令的那些），
-以及只影响插件界面的纯 UI 能力。只读遥测走 [`meta.metrics`](#61-metrics只读遥测声明)。
+### 6.0 三个字段的用途
 
-| cap | 实体 / 动作 |
+| 字段 | 用途 |
 |---|---|
-| `valve` | 阀门 switch，命令 `{"cmd":"valve","open":true}` |
-| `reboot` | 重启按钮，命令 `{"cmd":"reboot"}` |
-| `ota` | 检查更新按钮 |
-| `brightness` | 亮度 number，命令 `{"cmd":"set","key":"brightness","value":N}` |
+| `type` / `name` / `model` | 台账显示 |
+| `caps` | **只有 Switchyard 才能做的操作**（OTA、布局下发……），决定插件界面显示哪些管理按钮 |
+| `metrics` | 只读遥测的**清单**，用于插件界面展示；设备自己也按这份清单发 HA discovery |
+| `ha_entities` | 本设备往 HA 发过哪些实体，供插件「删除设备」时清理 |
+
+### 6.1 caps：Switchyard 独有能力
+
+`caps` 的判定标准只有一条：**HA 自己做不到、必须由插件代劳的动作**。
+
+| cap | 动作 |
+|---|---|
+| `ota` | 固件分发（插件负责文件托管、版本比较、批量下发） |
 | `layout` | （不生成实体）设备页布局编辑器开关 |
 | `background` `rotation` `voice` | （不生成实体）对应配置面板 |
 
-**在线状态不需要声明**：`switchyard/<id>/availability` 是每个设备都有的固有主题，
-插件永远生成 `binary_sensor.<id>_online`（connectivity，由 LWT 维护）。
+**不再是 cap 的**：阀门、重启、亮度、固件版本、信号、电量、水量、温湿度、漏水……
+这些 HA 都能用标准 MQTT 实体表达，归设备自己的 discovery。
 
-未声明的 cap 不生成实体。
+### 6.2 metrics：只读遥测清单
 
-> **迁移说明（v0.2）**：`fw` / `rssi` / `uptime` / `battery` / `battery_v` / `water` /
-> `climate` / `humidity` / `leak` / `comm_fault` / `log` / `online` 这些**只读** cap
-> 已从词表移除，改由 `metrics` 声明。老固件继续声明它们也不会报错，只是不再生成实体；
-> 插件升级时会把 broker 上残留的旧实体配置清掉（见 `LEGACY_CAPS`）。
-> 迁移时 metric 的 `key` 沿用原 cap 名（如 `water`），`object_id` 不变，HA 里的实体能平滑过渡。
+设备声明自己有哪些值，插件**只用来展示**（不生成实体）。设备按同一份清单
+自己发布 HA discovery，两边保持一致即可。
+
+```json
+{
+  "type": "host",
+  "caps": ["ota"],
+  "name": "LS2K0300 板子",
+  "model": "Loongson 2K0300",
+  "metrics": [
+    {"key": "ip_eth",   "name": "有线 IP",  "icon": "mdi:ethernet"},
+    {"key": "cpu_load", "name": "CPU 占用", "unit": "%", "icon": "mdi:cpu-64-bit"}
+  ],
+  "ha_entities": [
+    {"component": "sensor",        "object": "ip_eth"},
+    {"component": "sensor",        "object": "cpu_load"},
+    {"component": "binary_sensor", "object": "online"},
+    {"component": "button",        "object": "reboot"}
+  ]
+}
+```
+
+metric 字段：
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `key` | ✅ | state JSON 里的字段名，也是 object_id 后缀。限 `[a-z0-9_]{1,40}` |
+| `name` | | 显示名，缺省用 `key` |
+| `kind` | | `sensor`（默认）或 `binary_sensor` |
+| `unit` | | 单位 |
+| `icon` | | mdi 图标 |
+| `device_class` | | HA 的 device_class |
+| `state_class` | | 用于 HA 发现（如 `total_increasing`） |
+| `object` | | 覆盖 object_id 后缀 |
+
+### 6.3 ha_entities：供清理
+
+设备把发过的实体列出来，插件「删除设备」时照着发空 retained：
+`homeassistant/<component>/switchyard_<id>/<object>/config`。
+
+不列也没关系——只是删完设备后，HA 里会留下手动删的孤儿实体。
 
 ```json
 {
@@ -199,60 +242,6 @@ switchyard/<id>/cfg      payload = 布局 JSON（和 /local/switchyard/layout.js
 ```
 
 Switchyard 用它决定显示哪些按钮（有没有 OTA、能否下发布局）。
-
-### 6.1 metrics（只读遥测声明）
-
-`caps` 和 `metrics` 的分工，是 v0.2 起明确的一条边界：
-
-| | 用途 | 生成什么 |
-|---|---|---|
-| **caps** | **需要 Switchyard 主动操作**的能力 | switch / button / number（阀门、重启、OTA、亮度），或只决定插件界面 |
-| **metrics** | **只读遥测** | sensor |
-
-**为什么这么分**：如果每台新设备、每个新指标都往 `caps` 词表里加一项，
-`SPECS` 会变成什么都管的上帝对象，加一个"CPU 占用"就得改插件 + 重新构建。
-遥测数据由设备自己声明"我有哪些值"，插件按声明生成实体，**加指标不用动插件**。
-
-设备在 `meta` 里加一个 `metrics` 数组：
-
-```json
-{
-  "type": "host",
-  "caps": ["online", "reboot"],
-  "name": "LS2K0300 板子",
-  "model": "Loongson 2K0300",
-  "metrics": [
-    {"key": "ip_eth",       "name": "有线 IP",  "icon": "mdi:ethernet"},
-    {"key": "ip_wlan",      "name": "无线 IP",  "icon": "mdi:wifi"},
-    {"key": "cpu_load",     "name": "CPU 占用", "unit": "%", "icon": "mdi:cpu-64-bit"},
-    {"key": "mem_used_pct", "name": "内存占用", "unit": "%"},
-    {"key": "disk_used_pct","name": "存储占用", "unit": "%"},
-    {"key": "uptime",       "name": "运行时长", "unit": "s",
-     "device_class": "duration", "state_class": "total_increasing"}
-  ]
-}
-```
-
-| 字段 | 必填 | 说明 |
-|---|---|---|
-| `key` | ✅ | state JSON 里的字段名，也是 `object_id` 后缀。限 `[a-z0-9_]{1,40}` |
-| `name` | | 显示名，缺省用 `key` |
-| `kind` | | `sensor`（默认）或 `binary_sensor`——布尔型遥测（漏水、通信故障）用后者 |
-| `unit` | | 单位。有单位就自动带 `state_class=measurement` |
-| `icon` | | mdi 图标 |
-| `device_class` | | HA 的 device_class（如 `temperature`、`signal_strength`、`duration`、`moisture`） |
-| `state_class` | | 覆盖默认的 `measurement`（如 `total_increasing`） |
-| `object` | | 覆盖 object_id 后缀——**迁移时用来保持 entity_id 不变** |
-| `category` | | `diagnostic` / `config`，缺省 `diagnostic`；传空字符串则不设 |
-| `source` | | `state`（默认）或 `diag`——值从哪个主题取（日志行用 `diag`） |
-
-生成的实体：`homeassistant/sensor/switchyard_<id>/<object>/config`，
-`state_topic` 指向 `switchyard/<id>/state`，`value_template` 为 `{{ value_json.<key> }}`。
-
-**兼容性**：没有 `metrics` 的老设备继续走 `caps → SPECS` 老路径，行为不变。
-
-**迁移提示**：把某项从 `caps` 迁到 `metrics` 时，`key` 沿用原来的 cap 名
-（例如 `water`），`object_id` 就不会变，HA 里的实体无感迁移，不会产生重复实体。
 
 ## 7. OTA 流程
 
@@ -272,15 +261,74 @@ Switchyard                     设备
 - 设备写**非活动槽**，断电不影响当前固件；启用 bootloader rollback；
 - `sha256` 可选，设备实现校验更佳。
 
-## 8. Home Assistant 侧
+## 8. Home Assistant 侧（设备自己注册，不经过插件）
 
-- 设备实体仍用标准 MQTT Discovery（`homeassistant/<component>/<node>/<object>/config`），
-  这样 HA 的仪表盘、自动化、语音都能直接用；
-- Switchyard 只订阅 `switchyard/+/state|availability|event`，**不代替** discovery；
-- 没有 MQTT 的设备（比如现在走 HTTP 的圆屏）可以先保留 HTTP，Switchyard 按设备类型兼容。
+### 8.1 为什么
+
+早期版本由插件替设备生成 discovery。问题不是"会不会丢"——retained 配置在 broker 上
+能活很久；真正的缺口是：
+
+- 插件挂着的时候**新加的设备在 HA 里根本不出现**；
+- 插件升级带 bug 时可能误改别人的实体；
+- 加一个指标就得改插件 + 重新构建加载项。
+
+所以 v0.3 起**设备自己发 discovery**，插件退出实体注册的数据路径：
+
+```
+设备 ──pub──▶ switchyard/<id>/state ──▶ HA（直接读，不经过插件）
+                    └───────────────▶ 插件（只读，做台账）
+```
+
+插件挂了、升级坏了，HA 的实体和自动化都不受影响。
+
+### 8.2 设备要发什么
+
+对每个实体发一条 retained 配置：
+
+```
+homeassistant/<component>/switchyard_<id>/<object>/config
+```
+
+`<component>` 用 HA 的标准值：`sensor` / `binary_sensor` / `switch` / `button` / `number`。
+`state_topic` 直接用 `switchyard/<id>/state`（数据源只有一个，两边都读它）。
+
+在线状态例外：读 `switchyard/<id>/availability`，`payload_on=online`、`payload_off=offline`。
+
+**连接建立时发一次即可**（retained）；建议顺带每 10 分钟补发一次，防止 broker 丢 retained
+或别的组件误清。
+
+### 8.3 控制回下行
+
+HA 能表达的控制（开关、按钮、数字）**不占 `caps`**，由设备在自己的 discovery 里声明
+`command_topic`：
+
+```
+switchyard/<id>/ha/<object>/set
+```
+
+payload 用 HA 的惯例（`ON`/`OFF`、数字、按钮的 `PRESS`），**不是** Switchyard 的 JSON 命令。
+
+两条通道彻底分开：
+
+| 通道 | 主题 | 格式 | 谁用 |
+|---|---|---|---|
+| HA 控制 | `switchyard/<id>/ha/<obj>/set` | 纯值（ON / 数字 / PRESS） | HA 的 switch/button/number |
+| Switchyard 操作 | `switchyard/<id>/cmd` | JSON + `seq` 去重 | OTA、布局下发等插件独有能力 |
+
+由于 `switchyard/+/state` 这类订阅只匹配三层，而 `ha/<obj>/set` 是五层，
+两者在 MQTT 通配符层面天然隔离；设备台账的 `on_message` 也有 `len(parts)==3` 的防御。
+
+### 8.4 删除设备时的清理
+
+设备在 `meta.ha_entities` 里自报发过哪些实体，插件「删除设备」时照着发空 retained
+（见 §6.3）。设备没自报就只能去 HA 界面里手动删。
 
 ## 9. 版本演进
 
-- v0.1（本文件）：state / availability / cmd / ack / event；
+- v0.1：state / availability / cmd / ack / event；
+- v0.2：引入 `meta.metrics`，只读遥测不再占 `caps`；
+- **v0.3（本版）**：HA 实体改由设备自己发布 discovery，插件不再生成实体；
+  `caps` 收缩为"Switchyard 独有能力"；新增 `ha_entities` 与 `switchyard/<id>/ha/<obj>/set`；
+  新增 `meta.metrics.kind` / `source` 等字段。
 - 后续新增字段必须可选，设备可忽略未知字段；
 - 破坏性变更走 `switchyard/v2/...` 新根，不原地改语义。

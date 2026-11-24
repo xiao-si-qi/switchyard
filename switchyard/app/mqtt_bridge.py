@@ -9,7 +9,6 @@ import json
 import os
 import re
 
-import discovery
 import socket
 import struct
 import threading
@@ -364,14 +363,14 @@ class DeviceStore:
             self._save()
 
     def _caps(self, dev):
-        """能力以设备上报的 meta 为准；没上报才按 type 兜底。"""
+        """设备声明的 Switchyard 能力，**只决定界面显示哪些管理操作**。
+
+        v0.3 起 caps 不再驱动 HA 实体（实体由设备自己发布 discovery），
+        所以这里不需要任何按 type 的兜底：设备没声明就是没有可操作能力。
+        """
         meta = dev.get("meta") or {}
         caps = meta.get("caps")
-        if isinstance(caps, list) and caps:
-            return caps
-        # 注意：DeviceStore 的条目里类型在 dev["state"]["type"]，没有顶层的 type
-        dev_type = meta.get("type") or (dev.get("state") or {}).get("type") or "unknown"
-        return discovery.DEFAULT_CAPS.get(dev_type, discovery.DEFAULT_CAPS["unknown"])
+        return caps if isinstance(caps, list) else []
 
     def snapshot(self):
         now = int(time.time())

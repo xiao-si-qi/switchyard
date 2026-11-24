@@ -517,17 +517,18 @@ def api_device_forget(device_id):
     if err:
         return err
     dev = STORE.get_device(device_id)
-    caps = dev.get("caps") if dev else None
+    # 设备在 meta.ha_entities 里自报它发过哪些 HA 实体，插件照着清
+    ha_entities = (dev.get("meta") or {}).get("ha_entities") if dev else None
     STORE.forget(device_id)
-    discovery.remove_device(MQTT, device_id, caps)
-    DISCOVERY_SEEN.pop(device_id, None)
+    entities_cleared = discovery.cleanup_entities(MQTT, device_id, ha_entities)
     cleared = []
     if MQTT is not None and MQTT.connected:
         # 清掉 broker 上该设备的 retained 消息，否则重启后又会"复活"
-        for suffix in ("state", "availability", "event", "cmd", "cfg"):
+        for suffix in ("state", "availability", "event", "cmd", "cfg", "meta"):
             if MQTT.publish("switchyard/%s/%s" % (device_id, suffix), "", retain=True):
                 cleared.append(suffix)
-    return jsonify({"ok": True, "forgot": device_id, "retained_cleared": cleared})
+    return jsonify({"ok": True, "forgot": device_id, "retained_cleared": cleared,
+                    "ha_entities_cleared": entities_cleared})
 
 
 @app.post("/api/devices/<device_id>/log")
@@ -842,38 +843,13 @@ STORE = mqtt_bridge.DeviceStore(
 MQTT = None
 
 
-DISCOVERY_SEEN = {}
-
-
-def _metrics_signature(dev):
-    """把 meta.metrics 压成可比较的 key：指标改名/改单位时要重新发布 discovery。"""
-    metrics = (dev.get("meta") or {}).get("metrics") or []
-    return tuple(
-        (m.get("key"), m.get("name"), m.get("unit"), m.get("icon"), m.get("object"))
-        for m in metrics if isinstance(m, dict)
-    )
-
-
 def on_mqtt_message(topic, payload):
+    """只做一件事：喂给设备台账。
+
+    HA 实体由设备自己发布 discovery（见 discovery.py 顶部说明），
+    插件不在实体注册的数据路径上——它挂了也不会影响 HA。
+    """
     STORE.on_message(topic, payload)
-    if topic.endswith("/state") or topic.endswith("/meta"):
-        device_id = topic.split("/")[1]
-        dev = STORE.get_device(device_id)
-        if dev is None:
-            return
-        # 中文名、caps、metrics 都进 key：任一项变化都要重新发布 discovery
-        key = (dev.get("type"), dev.get("fw"), tuple(dev.get("caps") or []),
-               (dev.get("meta") or {}).get("name"), _metrics_signature(dev))
-        if DISCOVERY_SEEN.get(device_id) != key:
-            state = dict(dev["raw"])
-            meta = dev.get("meta") or {}
-            state["name"] = meta.get("name") or device_id
-            state["model"] = meta.get("model")
-            n = discovery.publish_device(MQTT, device_id, state, dev.get("caps"),
-                                         meta.get("metrics"))
-            if n:
-                DISCOVERY_SEEN[device_id] = key
-                print("discovery: %d entities for %s" % (n, device_id), flush=True)
 
 
 def send_device_cmd(device_id, cmd):
@@ -884,36 +860,6 @@ def send_device_cmd(device_id, cmd):
     payload["seq"] = STORE.next_seq(device_id)
     topic = "switchyard/%s/cmd" % device_id
     return MQTT.publish(topic, json.dumps(payload, ensure_ascii=False), retain=False)
-
-
-def discovery_loop():
-    """补发 discovery 配置：连接建立/重连之后各跑一次，平时靠 retained 维持。
-
-    以前是每 5 分钟无条件全量重发（含"未声明能力"的清空），设备一多就是成倍的
-    无效 MQTT 流量；retained 消息本来就会留在 broker 上，只有会话丢失（broker
-    没开持久化、重启过）才需要补。这里用 connects 计数判断是否刚连上/重连过。
-    """
-    last_connects = -1
-    while True:
-        time.sleep(5)
-        if MQTT is None or not MQTT.connected:
-            continue
-        connects = getattr(MQTT, "connects", 0)
-        if connects == last_connects:
-            continue            # 同一连接，不用重发
-        last_connects = connects
-        try:
-            for dev in STORE.snapshot():
-                state = dict(dev["raw"])
-                meta = dev.get("meta") or {}
-                state["name"] = meta.get("name") or dev["id"]
-                state["model"] = meta.get("model")
-                discovery.publish_device(MQTT, dev["id"], state, dev.get("caps"),
-                                         meta.get("metrics"))
-            print("discovery: 连接已建立（第 %d 次），已补发全部实体配置" % connects, flush=True)
-        except Exception as exc:  # noqa: BLE001
-            print("discovery: 补发失败: %s" % exc, flush=True)
-            last_connects = -1   # 下一轮重试
 
 
 def start_mqtt():
@@ -929,7 +875,6 @@ def start_mqtt():
     MQTT.set_on_message(on_mqtt_message)
     MQTT.start(["switchyard/+/state", "switchyard/+/availability", "switchyard/+/event",
                 "switchyard/+/meta", "switchyard/+/cfg", "switchyard/+/diag", "switchyard/+/log"])
-    threading.Thread(target=discovery_loop, daemon=True).start()
     print("mqtt: connecting to %s:%s as %s" % (host, port, user or "<anonymous>"), flush=True)
 
 
@@ -938,7 +883,7 @@ def mqtt_status():
 
 
 def main():
-    start_mqtt()          # 里面已经启动了 discovery_loop，别重复启
+    start_mqtt()
     print("switchyard %s listening on :%d (www_dir=%s)" % (addon_version(), PORT, WWW_DIR), flush=True)
     app.run(host="0.0.0.0", port=PORT, threaded=True, use_reloader=False, debug=False)
 
