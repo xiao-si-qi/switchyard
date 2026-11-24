@@ -845,6 +845,15 @@ MQTT = None
 DISCOVERY_SEEN = {}
 
 
+def _metrics_signature(dev):
+    """把 meta.metrics 压成可比较的 key：指标改名/改单位时要重新发布 discovery。"""
+    metrics = (dev.get("meta") or {}).get("metrics") or []
+    return tuple(
+        (m.get("key"), m.get("name"), m.get("unit"), m.get("icon"), m.get("object"))
+        for m in metrics if isinstance(m, dict)
+    )
+
+
 def on_mqtt_message(topic, payload):
     STORE.on_message(topic, payload)
     if topic.endswith("/state") or topic.endswith("/meta"):
@@ -852,15 +861,16 @@ def on_mqtt_message(topic, payload):
         dev = STORE.get_device(device_id)
         if dev is None:
             return
-        # 中文名也进 key：改名后要重新发布 discovery，否则 HA 里还是旧名字
+        # 中文名、caps、metrics 都进 key：任一项变化都要重新发布 discovery
         key = (dev.get("type"), dev.get("fw"), tuple(dev.get("caps") or []),
-               (dev.get("meta") or {}).get("name"))
+               (dev.get("meta") or {}).get("name"), _metrics_signature(dev))
         if DISCOVERY_SEEN.get(device_id) != key:
             state = dict(dev["raw"])
             meta = dev.get("meta") or {}
             state["name"] = meta.get("name") or device_id
             state["model"] = meta.get("model")
-            n = discovery.publish_device(MQTT, device_id, state, dev.get("caps"))
+            n = discovery.publish_device(MQTT, device_id, state, dev.get("caps"),
+                                         meta.get("metrics"))
             if n:
                 DISCOVERY_SEEN[device_id] = key
                 print("discovery: %d entities for %s" % (n, device_id), flush=True)
@@ -898,7 +908,8 @@ def discovery_loop():
                 meta = dev.get("meta") or {}
                 state["name"] = meta.get("name") or dev["id"]
                 state["model"] = meta.get("model")
-                discovery.publish_device(MQTT, dev["id"], state, dev.get("caps"))
+                discovery.publish_device(MQTT, dev["id"], state, dev.get("caps"),
+                                         meta.get("metrics"))
             print("discovery: 连接已建立（第 %d 次），已补发全部实体配置" % connects, flush=True)
         except Exception as exc:  # noqa: BLE001
             print("discovery: 补发失败: %s" % exc, flush=True)

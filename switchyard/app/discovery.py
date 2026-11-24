@@ -1,8 +1,16 @@
 """Publish Home Assistant MQTT Discovery entries for every managed device.
 
-**能力声明（caps）是唯一依据。** 设备在 retained 的 `switchyard/<id>/meta` 里
-列出它会什么，Switchyard 就只生成对应的实体/按钮；不看 state 里碰巧有哪些字段
-去猜（那样设备换个字段名、少报一次值，HA 里的实体就会飘）。
+**两套来源，职责分开：**
+
+1. `caps`（能力）——**只放需要 Switchyard 主动操作的**能力：
+   阀门、重启、OTA、亮度、布局…… 这些要生成 switch / button / number 实体，
+   或者只决定插件界面显示哪些面板。
+
+2. `meta.metrics`（指标）——**只读遥测**：IP、CPU、内存、磁盘、电量、水量……
+   设备只声明"我有哪些值、叫什么、单位是什么"，由这里统一生成 sensor。
+   这样设备不需要懂 HA 的 discovery 格式，`SPECS` 词表也不用为每台新设备扩张。
+
+兼容：没有 `metrics` 的老设备继续走 caps → SPECS 的老路径，行为不变。
 
 能力词表（详见 docs/PROTOCOL.md）：
 
@@ -27,9 +35,24 @@ Discovery 配置是 retained，forget 时发空消息删除。
 """
 
 import json
+import re
 
 DISCOVERY_PREFIX = "homeassistant"
 MANUFACTURER = "Switchyard"
+
+# metrics 的 key 会进 MQTT 主题和 entity_id，必须限定字符集（同 DEVICE_ID_RE 的理由）
+METRIC_KEY_RE = re.compile(r"^[a-z0-9_]{1,40}$")
+
+# 每台设备上「上一次发布过哪些 metric 实体」，用来清理设备不再声明的孤儿实体
+_METRIC_SEEN = {}
+
+# 每台设备上「上一次发布过哪些 cap」，用来精确清理，避免每次全量清 13 条
+_CAP_SEEN = {}
+
+
+def _entity_caps():
+    """所有会生成实体的 cap（排除 background/rotation/voice 这类纯 UI 能力）。"""
+    return [cap for cap, spec in SPECS.items() if spec.get("kind") != "none"]
 
 # 每类设备的默认能力（设备没上报 meta 时使用）
 DEFAULT_CAPS = {
@@ -200,30 +223,105 @@ def _configs(device_id, state, caps):
     return out
 
 
-def publish_device(mqtt, device_id, state, caps=None):
+def _metric_configs(device_id, state, metrics):
+    """把设备声明的 meta.metrics 转成 HA sensor 配置，返回 [(object, payload), ...]。
+
+    metric 字段（都来自设备，插件不猜）：
+
+        key          必填，state JSON 里的字段名（也做 object_id 后缀）
+        name         显示名，缺省用 key
+        unit         单位，有单位就带 state_class=measurement
+        icon         mdi 图标
+        device_class HA 的 device_class（可省）
+        object       覆盖 object_id 后缀（迁移时用来保持 entity_id 不变）
+        category     diagnostic / config，缺省 diagnostic
+    """
+    out = []
+    state_topic = "switchyard/%s/state" % device_id
+    for m in metrics or []:
+        if not isinstance(m, dict):
+            continue
+        key = str(m.get("key") or "").strip()
+        if not METRIC_KEY_RE.match(key):
+            # 非法 key 直接跳过：可能是设备写错了，也可能是主题注入尝试
+            continue
+        obj = str(m.get("object") or key).strip()
+        if not METRIC_KEY_RE.match(obj):
+            obj = key
+        cfg = {
+            "name": m.get("name") or key,
+            # unique_id 和 caps 路径用同一套命名，保证迁移时实体不变
+            "unique_id": "switchyard_%s_%s" % (device_id, obj),
+            "object_id": "%s_%s" % (device_id, obj),
+            "state_topic": state_topic,
+            "value_template": "{{ value_json.%s }}" % key,
+            "device": _device_block(device_id, state),
+            "origin": {"name": MANUFACTURER},
+        }
+        if m.get("unit"):
+            cfg["unit_of_measurement"] = m["unit"]
+            cfg["state_class"] = m.get("state_class") or "measurement"
+        if m.get("icon"):
+            cfg["icon"] = m["icon"]
+        if m.get("device_class"):
+            cfg["device_class"] = m["device_class"]
+        category = m.get("category", "diagnostic")
+        if category:
+            cfg["entity_category"] = category
+        out.append((obj, cfg))
+    return out
+
+
+def publish_device(mqtt, device_id, state, caps=None, metrics=None):
     """发布（retained）某台设备的全部实体配置，返回条数。
 
-    设备改了 caps（比如以前声明过 battery，现在不声明）时，把不再声明的
-    实体发布成空 retained，否则 HA 里会留下永远 unknown 的孤儿实体。
+    caps 走 SPECS 词表（可操作能力 + 老固件的只读能力），
+    metrics 走设备自声明（只读遥测）。两条路径互不干扰。
+
+    设备不再声明的 cap 或 metric，会发空 retained 删掉对应实体，
+    否则 HA 里会留下永远 unknown 的孤儿实体。
     """
     if mqtt is None or not mqtt.connected:
         return 0
 
     declared = set(caps or [])
-    for cap, spec in SPECS.items():
-        if cap in declared:
+
+    # 清理不再声明的 cap 实体。
+    # 第一次见到这台设备时不知道 broker 上残留了什么，全量清一遍；
+    # 之后只清「上次声明过、这次没声明」的，避免每轮发布都发十几条空消息。
+    previous = _CAP_SEEN.get(device_id)
+    stale = (set(_entity_caps()) - declared) if previous is None else (previous - declared)
+    for cap in stale:
+        spec = SPECS.get(cap)
+        if spec is None or spec.get("kind") == "none":
             continue
-        if spec["kind"] == "none":
-            continue          # 纯 UI 能力（background/rotation/voice）不生成实体
         obj = spec.get("obj", cap)
         topic = "%s/%s/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, spec["kind"], device_id, obj)
         mqtt.publish(topic, "", retain=True)
+    _CAP_SEEN[device_id] = declared
 
     sent = 0
     for component, obj, cfg in _configs(device_id, state, caps):
         topic = "%s/%s/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, component, device_id, obj)
         if mqtt.publish(topic, json.dumps(cfg, ensure_ascii=False), retain=True):
             sent += 1
+
+    # ---- metrics（只读遥测）----
+    metric_cfgs = _metric_configs(device_id, state, metrics)
+    current = set()
+    for obj, cfg in metric_cfgs:
+        current.add(obj)
+        topic = "%s/sensor/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, device_id, obj)
+        if mqtt.publish(topic, json.dumps(cfg, ensure_ascii=False), retain=True):
+            sent += 1
+
+    # 清掉这台设备上次发布过、这次不再声明的 metric 实体
+    previous = _METRIC_SEEN.get(device_id, set())
+    for obj in previous - current:
+        topic = "%s/sensor/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, device_id, obj)
+        mqtt.publish(topic, "", retain=True)
+    _METRIC_SEEN[device_id] = current
+
     return sent
 
 
@@ -232,9 +330,19 @@ def remove_device(mqtt, device_id, caps=None):
     if mqtt is None or not mqtt.connected:
         return 0
     removed = 0
-    # 用全量能力清，避免设备改过 caps 后留下孤儿实体
-    for component, obj, _cfg in _configs(device_id, {}, list(SPECS.keys())):
-        topic = "%s/%s/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, component, device_id, obj)
+    # 清掉这台设备曾经声明过的 cap 实体
+    past = _CAP_SEEN.pop(device_id, set(_entity_caps()))
+    for cap in past:
+        spec = SPECS.get(cap)
+        if spec is None or spec.get("kind") == "none":
+            continue
+        obj = spec.get("obj", cap)
+        topic = "%s/%s/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, spec["kind"], device_id, obj)
+        if mqtt.publish(topic, "", retain=True):
+            removed += 1
+    # 这台设备声明过的 metric 实体也要清
+    for obj in _METRIC_SEEN.pop(device_id, set()):
+        topic = "%s/sensor/switchyard_%s/%s/config" % (DISCOVERY_PREFIX, device_id, obj)
         if mqtt.publish(topic, "", retain=True):
             removed += 1
     return removed

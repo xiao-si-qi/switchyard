@@ -193,6 +193,58 @@ switchyard/<id>/cfg      payload = 布局 JSON（和 /local/switchyard/layout.js
 
 Switchyard 用它决定显示哪些按钮（有没有 OTA、能否下发布局）。
 
+### 6.1 metrics（只读遥测声明）
+
+`caps` 和 `metrics` 的分工，是 v0.2 起明确的一条边界：
+
+| | 用途 | 生成什么 |
+|---|---|---|
+| **caps** | **需要 Switchyard 主动操作**的能力 | switch / button / number（阀门、重启、OTA、亮度），或只决定插件界面 |
+| **metrics** | **只读遥测** | sensor |
+
+**为什么这么分**：如果每台新设备、每个新指标都往 `caps` 词表里加一项，
+`SPECS` 会变成什么都管的上帝对象，加一个"CPU 占用"就得改插件 + 重新构建。
+遥测数据由设备自己声明"我有哪些值"，插件按声明生成实体，**加指标不用动插件**。
+
+设备在 `meta` 里加一个 `metrics` 数组：
+
+```json
+{
+  "type": "host",
+  "caps": ["online", "reboot"],
+  "name": "LS2K0300 板子",
+  "model": "Loongson 2K0300",
+  "metrics": [
+    {"key": "ip_eth",       "name": "有线 IP",  "icon": "mdi:ethernet"},
+    {"key": "ip_wlan",      "name": "无线 IP",  "icon": "mdi:wifi"},
+    {"key": "cpu_load",     "name": "CPU 占用", "unit": "%", "icon": "mdi:cpu-64-bit"},
+    {"key": "mem_used_pct", "name": "内存占用", "unit": "%"},
+    {"key": "disk_used_pct","name": "存储占用", "unit": "%"},
+    {"key": "uptime",       "name": "运行时长", "unit": "s",
+     "device_class": "duration", "state_class": "total_increasing"}
+  ]
+}
+```
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `key` | ✅ | state JSON 里的字段名，也是 `object_id` 后缀。限 `[a-z0-9_]{1,40}` |
+| `name` | | 显示名，缺省用 `key` |
+| `unit` | | 单位。有单位就自动带 `state_class=measurement` |
+| `icon` | | mdi 图标 |
+| `device_class` | | HA 的 device_class（如 `temperature`、`signal_strength`、`duration`） |
+| `state_class` | | 覆盖默认的 `measurement`（如 `total_increasing`） |
+| `object` | | 覆盖 object_id 后缀——**迁移时用来保持 entity_id 不变** |
+| `category` | | `diagnostic` / `config`，缺省 `diagnostic` |
+
+生成的实体：`homeassistant/sensor/switchyard_<id>/<object>/config`，
+`state_topic` 指向 `switchyard/<id>/state`，`value_template` 为 `{{ value_json.<key> }}`。
+
+**兼容性**：没有 `metrics` 的老设备继续走 `caps → SPECS` 老路径，行为不变。
+
+**迁移提示**：把某项从 `caps` 迁到 `metrics` 时，`key` 沿用原来的 cap 名
+（例如 `water`），`object_id` 就不会变，HA 里的实体无感迁移，不会产生重复实体。
+
 ## 7. OTA 流程
 
 ```
