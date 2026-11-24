@@ -174,7 +174,7 @@
 <header>
   <h1 id="home-link">Switchyard</h1>
   <span class="status" id="mqtt-status">连接中…</span>
-  <span class="status" id="self-version">v?</span>
+  <span class="status" id="self-version">v…</span>
   <button id="btn-self-check" title="从 GitHub / Supervisor 读最新版本">检查更新</button>
   <span class="spacer" style="flex:1"></span>
   <button id="btn-theme" title="亮色 / 暗色 / 跟随系统">跟随系统</button>
@@ -1604,7 +1604,29 @@ $("d-fw-upload").onclick = async () => {
   }
 };
 
+/* 头部版本号：/api/health 已经带 version，页面加载时读一次即可，
+   不必等用户点「检查更新」（那个还要去 GitHub 比对最新版）。 */
+async function loadSelfVersion() {
+  const el = $("self-version");
+  if (!el) return;
+  try {
+    const resp = await fetch("api/health");
+    const data = await resp.json();
+    if (data.version) {
+      el.textContent = "v" + data.version;
+      el.title = "版本来源: " + (data.version_source || "?") +
+                 (data.version_error ? "\n" + data.version_error : "");
+    } else {
+      el.textContent = "版本未知";
+    }
+  } catch (e) {
+    el.textContent = "版本读取失败";
+    el.title = String(e);
+  }
+}
+
 route();
+loadSelfVersion();
 </script>
 </body>
 </html>
