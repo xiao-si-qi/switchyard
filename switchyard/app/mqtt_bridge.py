@@ -390,7 +390,8 @@ class DeviceStore:
                         "type": dev_type,
                         "name": meta.get("name") or state.get("name") or dev["id"],
                         "caps": self._caps(dev),
-                        "fw": state.get("fw"),
+                        "fw": state.get("fw"),          # 主机类设备这是内核版本
+                        "agent_version": state.get("agent_version"),
                         "rssi": state.get("rssi"),
                         "uptime": state.get("uptime"),
                         "battery": state.get("battery"),

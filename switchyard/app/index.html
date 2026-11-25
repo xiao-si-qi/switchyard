@@ -596,7 +596,7 @@ function metricBits(d, limit) {
   });
   if (!out.length) {
     // 老设备没有 metrics 声明：退回原来那几个固定字段
-    if (d.fw) out.push("固件 " + d.fw);
+    if (d.agent_version) out.push("代理 v" + d.agent_version);
     if (d.rssi !== null && d.rssi !== undefined) out.push(d.rssi + " dBm");
     if (d.battery !== null && d.battery !== undefined) out.push("电量 " + d.battery + "%");
   }
@@ -672,7 +672,9 @@ function renderDetail() {
     });
   } else {
     // 老设备没有 metrics 声明：保留原来的固定字段
-    rows.push(["固件", d.fw || "-"]);
+    // 主机类设备的 fw 是内核版本，不是"固件"；代理版本单独一行
+  rows.push(["Linux 内核", d.fw || "-"]);
+  if (d.agent_version) rows.push(["代理版本", "v" + d.agent_version]);
     rows.push(["IP", d.ip || "-"]);
     rows.push(["信号", d.rssi !== null && d.rssi !== undefined ? d.rssi + " dBm" : "-"]);
     rows.push(["电量", d.battery !== null && d.battery !== undefined ? d.battery + " %" : "-"]);
@@ -1526,7 +1528,7 @@ function renderUpdateState() {
   const d = devices.find((x) => x.id === currentDevice);
   const devFw = d && d.fw;
   const upFw = uploadedFw && uploadedFw.version;
-  $("d-ver-device").textContent = "设备固件: " + (devFw || "-");
+  $("d-ver-device").textContent = "设备版本: " + (devFw || "-");
   $("d-ver-upload").textContent = "已上传: " + (upFw || "-");
   const st = $("d-ver-state");
   if (!upFw) {
